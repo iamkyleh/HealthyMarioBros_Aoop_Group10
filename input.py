@@ -8,18 +8,26 @@ def _pressed(keys, code):
     except Exception:
         return False
 
-def get_keyboard_input(keys):
+def get_keyboard_input_wasd(keys):
     move_x: int = 0
-    if _pressed(keys, pygame.K_a) or _pressed(keys, pygame.K_LEFT):
+    if _pressed(keys, pygame.K_a):
         move_x -= 1
-    if _pressed(keys, pygame.K_d) or _pressed(keys, pygame.K_RIGHT):
+    if _pressed(keys, pygame.K_d):
         move_x += 1
-    jump_pressed = (
-        _pressed(keys, pygame.K_SPACE) or
-        _pressed(keys, pygame.K_w) or
-        _pressed(keys, pygame.K_UP)
-    )
-    attack_pressed = _pressed(keys, pygame.K_k)
-    return move_x, jump_pressed, attack_pressed
+    jump_pressed = _pressed(keys, pygame.K_w)
+    return move_x, jump_pressed
 
-input = get_keyboard_input
+def get_keyboard_input_arrows(keys):
+    move_x: int = 0
+    if _pressed(keys, pygame.K_LEFT):
+        move_x -= 1
+    if _pressed(keys, pygame.K_RIGHT):
+        move_x += 1
+    jump_pressed = _pressed(keys, pygame.K_UP)
+    return move_x, jump_pressed
+
+def input(keys, keyboard):
+    if keyboard == "wasd":
+        return get_keyboard_input_wasd(keys)
+    elif keyboard == "arrows":
+        return get_keyboard_input_arrows(keys)

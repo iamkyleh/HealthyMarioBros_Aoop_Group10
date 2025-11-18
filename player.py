@@ -2,12 +2,13 @@ from entity import Entity, GRAVITY, FRICTION
 from input import input
 
 class Player(Entity):
-    def __init__(self, name, x, y):
+    def __init__(self, name, x, y, keyboard):
         super().__init__(x, y, width=24, height=32, name=name)
         self.faction = 'P'
         self.lives: int = 3
         self.speed: float = 5.0
         self.jump_strength: float = 15.0
+        self.keyboard = keyboard
 
     def reborn(self):
         self.lives -= 1
@@ -15,7 +16,7 @@ class Player(Entity):
         self.vel_x = self.vel_y = 0.0
 
     def actuate(self, keys):
-        move_x, jump_pressed, attack_pressed = input(keys)
+        move_x, jump_pressed = input(keys, self.keyboard)
         self.vel_x += move_x * 0.8
         self.vel_x =  max(-self.speed, min(self.speed, self.vel_x))
         if move_x != 0:
