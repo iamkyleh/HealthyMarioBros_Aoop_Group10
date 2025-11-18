@@ -36,7 +36,6 @@ def draw_tiled(surface, image, p, camera_x):
 class Game:
     def __init__(self):
         pygame.init()
-        self._selectmode()
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption("Healthy Mario Bros")
         self.clock = pygame.time.Clock()
@@ -46,12 +45,15 @@ class Game:
 
         # entities
         # fix: use a single mario like the rest of the code expects
-        self.player1 = Player('Mario', 80, 400)
+        self.player = [Player('Mario', 80, 400, "arrows"), Player('Luigi', 120, 400, "wasd")]
         self.enemies = [Goomba(520, 420), Goomba(980, 420)]
         self.coins = [
             Coin(300, 300), Coin(340, 280), Coin(380, 300),
             Coin(700, 260), Coin(740, 260)
         ]
+
+        # game mode selection (placeholder)
+        self._selectmode()
 
         # level geometry and finish flag
         self.platforms = self._build_level()
@@ -67,7 +69,12 @@ class Game:
         self._imageloading()
 
     def _selectmode(self):
-        pass
+        self.playernum = input("enter number of players: [1/2]")
+        try:
+            self.player = self.player[:int(self.playernum)]
+        except Exception:
+            print("invalid input, defaulting to 1 player")
+            self.player = self.player[:1]
 
     def _imageloading(self):
         # guarantee every image is workng, no need to check after
@@ -112,7 +119,11 @@ class Game:
             self.draw_cloud(cx, cy)
 
     def update_camera(self):
-        self.camera_x = int(self.player1.x) - SCREEN_WIDTH // 2
+        mid = 0
+        for player in self.player:
+            mid += player.x
+        mid //= len(self.player)
+        self.camera_x = int(mid) - SCREEN_WIDTH // 2
         if self.camera_x < 0:
             self.camera_x = 0
 
@@ -120,29 +131,28 @@ class Game:
         if self.won:
             return
 
-        mrect = self.player1.rect
+        for player in self.player:
+            mrect = player.rect
+            # coins
+            for c in self.coins:
+                if not c.collected and mrect.colliderect(c.rect):
+                    c.collected = True
+                    self.score += 100
+            # goombas
+            for e in self.enemies:
+                if not e.is_alive:
+                    continue
+                if mrect.colliderect(e.rect):
+                    if player.vel_y > 0 and (mrect.bottom - e.rect.top) < 20:
+                        e.stomped()
+                        player.vel_y = -8
+                        self.score += 200
+                    else:
+                        player.reborn()
 
-        # coins
-        for c in self.coins:
-            if not c.collected and mrect.colliderect(c.rect):
-                c.collected = True
-                self.score += 100
-
-        # goombas
-        for e in self.enemies:
-            if not e.is_alive:
-                continue
-            if mrect.colliderect(e.rect):
-                if self.player1.vel_y > 0:
-                    e.lives -= 1
-                    self.player1.vel_y = -8
-                    self.score += 200
-                else:
-                    self.player1.reborn()
-
-        # fell off world
-        if self.player1.y > 800:
-            self.player1.reborn()
+            # fell off world
+            if player.y > 800:
+                player.reborn()
 
     def draw_world(self):
         # Draw platforms using images instead of rectangles:
@@ -161,10 +171,11 @@ class Game:
             e.draw(self.screen, self.camera_x)
 
         # player
-        self.player1.draw(self.screen, self.camera_x)
+        for player in self.player: 
+            player.draw(self.screen, self.camera_x)
 
     def draw_ui(self):
-        hud = self.font.render(f"Score: {self.score}   Lives: {self.player1.lives}", True, BLACK)
+        hud = self.font.render(f"Score: {self.score}   Lives: {self.player[0].lives}", True, BLACK)
         self.screen.blit(hud, (16, 16))
         if self.won:
             msg = self.big_font.render("YOU REACHED THE FLAG!", True, BLACK)
@@ -191,7 +202,8 @@ class Game:
 
             # update
             if not self.won:
-                self.player1.update(self.platforms, keys)
+                for player in self.player:
+                    player.update(self.platforms, keys)
                 for e in self.enemies:
                     e.update(self.platforms)
                 for c in self.coins:
