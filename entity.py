@@ -1,6 +1,9 @@
 import pygame
 from abc import ABC, abstractmethod
 
+GRAVITY = 0.8
+FRICTION = 0.85
+
 class Entity(ABC):
     def __init__(self, x, y, width=32, height=32, name=None):
         self.name = self.__class__.__name__ if name is None else name
