@@ -17,5 +17,10 @@ class Goomba(Enemy):
         self.wander_horizonal()
         self.move_and_collide_vertical(platforms)
     def stomped(self):
-        pass
+        if not self.is_alive:
+            return
+        self.lives -= 1
+        if self.lives <= 0:
+            self.vel_x = 0.0
+            self.vel_y = 0.0
     
