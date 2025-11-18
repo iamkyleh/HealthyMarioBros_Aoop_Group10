@@ -21,3 +21,5 @@ def get_keyboard_input(keys):
     )
     attack_pressed = _pressed(keys, pygame.K_k)
     return move_x, jump_pressed, attack_pressed
+
+input = get_keyboard_input
