@@ -38,7 +38,7 @@ class Entity(ABC):
         return self.lives > 0
     
     def take_damage(self, damage=1):
-        pass
+        self.lives = max(0, self.lives - damage)
     
     @abstractmethod
     def update(self, platforms, keys=None):
