@@ -66,6 +66,8 @@ class Entity(ABC):
                     self.vel_y = 0.0
 
     def draw(self, screen, camera_x):
+        if not self.is_alive:
+            return
         if self.image:
             screen_x = int(self.x - camera_x)
             screen_y = int(self.y)
