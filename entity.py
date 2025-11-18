@@ -66,4 +66,13 @@ class Entity(ABC):
                     self.vel_y = 0.0
 
     def draw(self, screen, camera_x):
-        pass
+        if self.image:
+            screen_x = int(self.x - camera_x)
+            screen_y = int(self.y)
+            if self.direction == -1:
+                flipped_image = pygame.transform.flip(self.image, True, False)
+                screen.blit(flipped_image, (screen_x, screen_y))
+            else:
+                screen.blit(self.image, (screen_x, screen_y))
+        else:
+            pygame.draw.rect(screen, (255, 0, 0), (int(self.x - camera_x), int(self.y), self.width, self.height))
