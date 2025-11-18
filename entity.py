@@ -1,5 +1,6 @@
 import pygame
 from abc import ABC, abstractmethod
+import addpath
 
 GRAVITY = 0.8
 FRICTION = 0.85
@@ -22,6 +23,11 @@ class Entity(ABC):
         self.faction: str = 'N'
         # Entity state
         self.lives: int = 1
+        try:
+            self.image = pygame.image.load(addpath.image_path(f"{self.name}.png"))
+            self.image = pygame.transform.scale(self.image, (self.width, self.height))
+        except pygame.error:
+            self.image = None
     
     @property
     def rect(self) -> pygame.Rect:
