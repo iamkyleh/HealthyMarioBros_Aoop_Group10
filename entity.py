@@ -45,10 +45,25 @@ class Entity(ABC):
         pass
 
     def move_and_collide_horizonal(self, platforms):
-        pass
+        self.x += self.vel_x
+        r = self.rect
+        for p in platforms:
+            if r.colliderect(p):
+                self.x -= self.vel_x
+                self.vel_x = 0.0
 
     def move_and_collide_vertical(self, platforms):
-        pass
+        self.y += self.vel_y
+        r = self.rect
+        for p in platforms:
+            if r.colliderect(p):
+                if self.vel_y > 0:
+                    self.y = p.top - self.height
+                    self.vel_y = 0.0
+                    self.on_ground = True
+                elif self.vel_y < 0:
+                    self.y = p.bottom
+                    self.vel_y = 0.0
 
     def draw(self, screen, camera_x):
         pass
