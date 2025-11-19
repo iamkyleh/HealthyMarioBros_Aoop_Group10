@@ -52,7 +52,6 @@ class Game:
 
         # UI state
         self.score = 0
-        self.lives = 3
         self.won = False
         self.font = pygame.font.SysFont(None, 28)
         self.big_font = pygame.font.SysFont(None, 64)
@@ -71,8 +70,8 @@ class Game:
     def _imageloading(self):
         # guarantee every image is workng, no need to check after
         self.image = {}
-        self.image["brick"] = load_image("Brick.png", (32, 32))
-        self.image["pipe"] = load_image("Pipe.png", (60, 60))
+        self.image["Brick"] = load_image("Brick.png", (32, 32))
+        self.image["Pipe"] = load_image("Pipe.png", (60, 60))
         # self.image["cloud"] = load_image("Cloud.png", (140, 70))
         missing = False
         for name, img in self.image.items():
@@ -106,7 +105,8 @@ class Game:
     def update_camera(self):
         mid = 0
         for player in self.player:
-            mid += player.x
+            if player.is_alive:
+                mid += player.x
         mid //= len(self.player)
         self.camera_x = int(mid) - SCREEN_WIDTH // 2
         if self.camera_x < 0:
@@ -141,13 +141,13 @@ class Game:
 
     def draw_world(self):
         # Draw platforms using images instead of rectangles:
-        #  - For pipe-sized rects (60x60), draw the pipe image once.
-        #  - For everything else, tile bricks to fill the rect area.
+        #  - For Pipe-sized rects (60x60), draw the Pipe image once.
+        #  - For everything else, tile Bricks to fill the rect area.
         for p in self.platforms:
             if p.width == 60 and p.height == 60:
-                self.screen.blit(self.image["pipe"], (p.x - self.camera_x, p.y))
+                self.screen.blit(self.image["Pipe"], (p.x - self.camera_x, p.y))
             else:
-                draw_tiled(self.screen, self.image["brick"], p, self.camera_x)
+                draw_tiled(self.screen, self.image["Brick"], p, self.camera_x)
 
         # coins & enemies (their own draw() can use images internally)
         for c in self.coins:
@@ -160,8 +160,13 @@ class Game:
             player.draw(self.screen, self.camera_x)
 
     def draw_ui(self):
-        hud = self.font.render(f"Score: {self.score}   Lives: {self.player[0].lives}", True, BLACK)
-        self.screen.blit(hud, (16, 16))
+        y = 16  # starting y position
+        for player in self.player:
+            lives_ui = self.font.render(f"{player.name} X {player.lives}", True, BLACK)
+            self.screen.blit(lives_ui, (16, y))
+            y += self.font.get_linesize()
+        score_ui = self.font.render(f"Score: {self.score}", True, BLACK)
+        self.screen.blit(score_ui, (650, 16))
         if self.won:
             msg = self.big_font.render("YOU REACHED THE FLAG!", True, BLACK)
             self.screen.blit(msg, (SCREEN_WIDTH // 2 - msg.get_width() // 2, 80))
@@ -212,4 +217,5 @@ class Game:
         sys.exit()
 
 if __name__ == "__main__":
-    Game().run()
+    game = Game()
+    game.run()
