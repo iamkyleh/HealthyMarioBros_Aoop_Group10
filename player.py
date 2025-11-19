@@ -11,8 +11,8 @@ class Player(Entity):
         self.keyboard = keyboard
     
     def take_damage(self, from_faction):
-        super().take_damage(from_faction)
-        self.x, self.y = 100, 100  # respawn position
+        if super().take_damage(from_faction):
+            self.x, self.y = 100, 100  # respawn position
         
 
     def actuate(self, keys):
