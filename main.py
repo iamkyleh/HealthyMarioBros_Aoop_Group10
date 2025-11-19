@@ -1,6 +1,7 @@
 import sys
 import pygame
 import addpath
+import json
 
 from player import Player
 from enemy import *
@@ -46,17 +47,8 @@ class Game:
         # entities
         # fix: use a single mario like the rest of the code expects
         self.player = [Player('Mario', 80, 400, "arrows"), Player('Luigi', 120, 400, "wasd")]
-        self.enemies = [Goomba(520, 420), Goomba(980, 420)]
-        self.coins = [
-            Coin(300, 300), Coin(340, 280), Coin(380, 300),
-            Coin(700, 260), Coin(740, 260)
-        ]
-
-        # game mode selection (placeholder)
+        self.platforms, self.coins, self.enemies = self._load_level()
         self._selectmode()
-
-        # level geometry and finish flag
-        self.platforms = self._build_level()
 
         # UI state
         self.score = 0
@@ -69,12 +61,12 @@ class Game:
         self._imageloading()
 
     def _selectmode(self):
-        self.playernum = input("enter number of players: [1/2]")
         try:
-            self.player = self.player[:int(self.playernum)]
+            self.playernum = int(input("enter number of players: [1/2]"))
         except Exception:
             print("invalid input, defaulting to 1 player")
-            self.player = self.player[:1]
+            self.playernum = 1
+        self.player = self.player[:self.playernum]
 
     def _imageloading(self):
         # guarantee every image is workng, no need to check after
@@ -91,21 +83,14 @@ class Game:
             pygame.quit()
             sys.exit()
 
-    def _build_level(self):
-        plats = []
-        # ground tiles
-        # chunk hight = 32*4 = 128
-        # chunk width = 32*8 = 256
-        for i in range(0, 2000, 256):
-            plats.append(pygame.Rect(i, 472+1, 256, 128))
-        # bricks / ledges
-        plats.append(pygame.Rect(260, 380, 128, 30))
-        plats.append(pygame.Rect(600, 360, 160, 30))
-        plats.append(pygame.Rect(960, 340, 128, 30))
-        plats.append(pygame.Rect(1220, 420, 160, 30))
-        # a pipe
-        plats.append(pygame.Rect(820, 440, 60, 60))
-        return plats
+    def _load_level(self, filename="world1"):
+        with open(addpath.world_path(f"{filename}.json")) as f:
+            data = json.load(f)
+            platforms, coins, enemies = [], [], []
+            platforms.extend([pygame.Rect(p["x"], p["y"], p["w"], p["h"]) for p in data["Platforms"]])
+            coins.extend([Coin(c["x"], c["y"]) for c in data["Coins"]])
+            enemies.extend([Goomba(e["x"], e["y"]) for e in data["Goombas"]])
+            return platforms, coins, enemies
     
     def draw_cloud(self, x, y):
             pygame.draw.ellipse(self.screen, WHITE, (x, y, 100, 40))
