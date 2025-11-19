@@ -9,11 +9,11 @@ class Player(Entity):
         self.speed: float = 5.0
         self.jump_strength: float = 15.0
         self.keyboard = keyboard
-
-    def reborn(self):
-        self.lives -= 1
-        self.x, self.y = 80, 400
-        self.vel_x = self.vel_y = 0.0
+    
+    def take_damage(self, from_faction):
+        super().take_damage(from_faction)
+        self.x, self.y = 100, 100  # respawn position
+        
 
     def actuate(self, keys):
         move_x, jump_pressed = input(keys, self.keyboard)

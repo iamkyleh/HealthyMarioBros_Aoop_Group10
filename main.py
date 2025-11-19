@@ -129,11 +129,11 @@ class Game:
                     continue
                 if mrect.colliderect(e.rect):
                     if player.vel_y > 0 and (mrect.bottom - e.rect.top) < 20:
-                        e.stomped()
+                        e.take_damage(from_faction=player.faction)
                         player.vel_y = -8
                         self.score += 200
                     else:
-                        player.reborn()
+                        player.take_damage(from_faction=e.faction)
 
             # fell off world
             if player.y > 800:
