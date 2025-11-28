@@ -215,6 +215,11 @@ class Game:
             else:
                 pass
 
+            if self.score / 1000 >= 1:
+                for p in self.player:
+                    p.lives += self.score // 1000
+                self.score = self.score % 1000
+
             self.update_camera()
 
             # draw
