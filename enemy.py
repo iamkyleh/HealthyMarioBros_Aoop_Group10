@@ -32,7 +32,7 @@ class Enemy(Entity):
 
 class Goomba(Enemy):
     def __init__(self, x, y):
-        super().__init__(x, y, 200)
+        super().__init__(x, y, points=2000)
     def update(self, platforms):
         if not self.is_alive:
             return
