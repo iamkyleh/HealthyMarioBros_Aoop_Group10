@@ -2,10 +2,15 @@ from entity import Entity
 import pygame
 
 class Enemy(Entity):
-    def __init__(self, x, y, width=32, height=32):
+    def __init__(self, x, y, width=32, height=32, points=200):
         super().__init__(x, y, width=width, height=height)
         self.faction = 'E'
         self.vel_x: float = -1
+        self._points: int = points
+    
+    @property
+    def points(self) -> int:
+        return self._points
     
     def _ground_ahead(self, platforms, step=6):
         """Return True if there's ground under the leading edge after a small step."""
@@ -27,7 +32,7 @@ class Enemy(Entity):
 
 class Goomba(Enemy):
     def __init__(self, x, y):
-        super().__init__(x, y)
+        super().__init__(x, y, 200)
     def update(self, platforms):
         if not self.is_alive:
             return

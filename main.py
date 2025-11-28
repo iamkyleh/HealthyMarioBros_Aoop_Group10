@@ -132,7 +132,7 @@ class Game:
                 if mrect.colliderect(e.rect):
                     if player.vel_y > 0 and (mrect.bottom - e.rect.top) < 20:
                         if e.take_damage(from_faction=player.faction):
-                            self.score += 200
+                            self.score += e.points
                         player.vel_y = -8
                     else:
                         player.take_damage(from_faction=e.faction)
