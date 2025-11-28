@@ -2,8 +2,8 @@ from entity import Entity, GRAVITY, FRICTION
 from input import input
 
 class Player(Entity):
-    def __init__(self, name, x, y, keyboard):
-        super().__init__(x, y, width=24, height=32, name=name)
+    def __init__(self, name, rebornpoint, keyboard):
+        super().__init__(rebornpoint[0], rebornpoint[1], width=24, height=32, name=name)
         self.faction = 'P'
         self.lives: int = 3
         self.speed: float = 5.0

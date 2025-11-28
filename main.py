@@ -46,8 +46,9 @@ class Game:
 
         # entities
         # fix: use a single mario like the rest of the code expects
-        self.player = [Player('Mario', 80, 400, "arrows"), Player('Luigi', 120, 400, "wasd")]
-        self.platforms, self.coins, self.enemies = self._load_level()
+        self.rebornpoint = (80, 400)
+        self.player = [Player('Mario', self.rebornpoint, "arrows"), Player('Luigi', self.rebornpoint, "wasd")]
+        self.platforms, self.flags, self.coins, self.enemies = self._load_level()
         self._selectmode()
 
         # UI state
@@ -85,11 +86,12 @@ class Game:
     def _load_level(self, filename="world1"):
         with open(addpath.world_path(f"{filename}.json")) as f:
             data = json.load(f)
-            platforms, coins, enemies = [], [], []
+            platforms, flag, coins, enemies = [], [], [], []
             platforms.extend([pygame.Rect(p["x"], p["y"], p["w"], p["h"]) for p in data["Platforms"]])
+            flag.extend([Flag(f["x"], f["y"]) for f in data["Flags"]])
             coins.extend([Coin(c["x"], c["y"]) for c in data["Coins"]])
             enemies.extend([Goomba(e["x"], e["y"]) for e in data["Goombas"]])
-            return platforms, coins, enemies
+            return platforms, flag, coins, enemies
     
     def draw_cloud(self, x, y):
             pygame.draw.ellipse(self.screen, WHITE, (x, y, 100, 40))
@@ -135,6 +137,12 @@ class Game:
                     else:
                         player.take_damage(from_faction=e.faction)
 
+            # flags
+            for f in self.flags:
+                if not f.is_checkpoint and mrect.colliderect(f.rect):
+                    f.checkpoint_touched = True
+                    self.rebornpoint = (f.x, f.y)
+
             # fell off world
             if player.y > 800:
                 player.reborn()
@@ -154,6 +162,11 @@ class Game:
             c.draw(self.screen, self.camera_x)
         for e in self.enemies:
             e.draw(self.screen, self.camera_x)
+        
+        # flags
+        for f in self.flags:
+            f.draw(self.screen, self.camera_x)
+        
 
         # player
         for player in self.player: 

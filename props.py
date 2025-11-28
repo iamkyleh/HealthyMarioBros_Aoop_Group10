@@ -44,3 +44,15 @@ class Coin(Props):
         y = int(self.y)
 
         screen.blit(scaled_image, (x, y))
+    
+class Flag(Props):
+    def __init__(self, x, y):
+        super().__init__(x, y, width=32, height=64)
+        self.checkpoint_touched = False
+
+    @property
+    def is_checkpoint(self):
+        return self.checkpoint_touched
+
+    def draw(self, screen, camera_x):
+        screen.blit(self.image, (int(self.x - camera_x), int(self.y)))
