@@ -10,9 +10,9 @@ class Player(Entity):
         self.jump_strength: float = 15.0
         self.keyboard = keyboard
     
-    def take_damage(self, from_faction):
+    def take_damage(self, from_faction, respawn_point):
         if super().take_damage(from_faction):
-            self.x, self.y = 100, 100  # respawn position
+            self.x, self.y = respawn_point  # respawn position
         
 
     def actuate(self, keys):

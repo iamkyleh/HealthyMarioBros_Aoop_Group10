@@ -46,8 +46,8 @@ class Game:
 
         # entities
         # fix: use a single mario like the rest of the code expects
-        self.rebornpoint = (80, 400)
-        self.player = [Player('Mario', self.rebornpoint, "arrows"), Player('Luigi', self.rebornpoint, "wasd")]
+        self.respawn_point = (80, 400)
+        self.player = [Player('Mario', self.respawn_point, "arrows"), Player('Luigi', self.respawn_point, "wasd")]
         self.platforms, self.flags, self.coins, self.enemies = self._load_level()
         self._selectmode()
 
@@ -132,22 +132,24 @@ class Game:
                     continue
                 if mrect.colliderect(e.rect):
                     if player.vel_y > 0 and (mrect.bottom - e.rect.top) < 20:
+                        # kill enemy
                         if e.take_damage(from_faction=player.faction):
                             self.score += e.points
                         player.vel_y = -8
                     else:
-                        player.take_damage(from_faction=e.faction)
+                        # kill player
+                        player.take_damage(from_faction=e.faction, respawn_point=self.respawn_point)
 
             # flags
             for f in self.flags:
                 if not f.is_checkpoint and mrect.colliderect(f.rect):
                     f.checkpoint_touched = True
                     f.update(player.name)
-                    self.rebornpoint = (f.x, f.y)
+                    self.respawn_point = (f.x, f.y)
 
             # fell off world
             if player.y > 800:
-                player.reborn()
+                player.take_damage(from_faction='W', respawn_point=self.respawn_point)
 
     def draw_world(self):
         # Draw platforms using images instead of rectangles:
