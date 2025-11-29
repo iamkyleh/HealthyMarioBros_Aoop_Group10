@@ -62,7 +62,8 @@ class Game:
 
     def _selectmode(self):
         try:
-            self.playernum = int(input("enter number of players: [1/2]"))
+            # self.playernum = int(input("enter number of players: [1/2]"))
+            self.playernum = 1
         except Exception:
             print("invalid input, defaulting to 1 player")
             self.playernum = 1
@@ -141,6 +142,7 @@ class Game:
             for f in self.flags:
                 if not f.is_checkpoint and mrect.colliderect(f.rect):
                     f.checkpoint_touched = True
+                    f.update(player.name)
                     self.rebornpoint = (f.x, f.y)
 
             # fell off world
