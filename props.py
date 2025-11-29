@@ -11,6 +11,7 @@ class Props():
         self.width: int = width
         self.height: int = height
         self.image = pygame.image.load(addpath.image_path(f"{self.name}.png"))
+        self.image = pygame.transform.scale(self.image, (width, height))
     
     @property
     def rect(self) -> pygame.Rect:
@@ -44,3 +45,21 @@ class Coin(Props):
         y = int(self.y)
 
         screen.blit(scaled_image, (x, y))
+    
+class Flag(Props):
+    def __init__(self, x, y):
+        self.width = 48
+        self.height = 144
+        super().__init__(x, y, width=self.width, height=self.height)
+        self.checkpoint_touched = False
+
+    @property
+    def is_checkpoint(self):
+        return self.checkpoint_touched
+
+    def update(self, name):
+        self.image = pygame.image.load(addpath.image_path(f"Flag_checked_{name}.png"))
+        self.image = pygame.transform.scale(self.image, (self.width, self.height))
+
+    def draw(self, screen, camera_x):
+        screen.blit(self.image, (int(self.x - camera_x), int(self.y)))

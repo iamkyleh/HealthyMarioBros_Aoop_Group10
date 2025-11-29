@@ -46,8 +46,9 @@ class Game:
 
         # entities
         # fix: use a single mario like the rest of the code expects
-        self.player = [Player('Mario', 80, 400, "arrows"), Player('Luigi', 120, 400, "wasd")]
-        self.platforms, self.coins, self.enemies = self._load_level()
+        self.respawn_point = (80, 400)
+        self.player = [Player('Mario', self.respawn_point, "arrows"), Player('Luigi', self.respawn_point, "wasd")]
+        self.platforms, self.flags, self.coins, self.enemies = self._load_level()
         self._selectmode()
 
         # UI state
@@ -61,7 +62,8 @@ class Game:
 
     def _selectmode(self):
         try:
-            self.playernum = int(input("enter number of players: [1/2]"))
+            # self.playernum = int(input("enter number of players: [1/2]"))
+            self.playernum = 1
         except Exception:
             print("invalid input, defaulting to 1 player")
             self.playernum = 1
@@ -85,11 +87,12 @@ class Game:
     def _load_level(self, filename="world1"):
         with open(addpath.world_path(f"{filename}.json")) as f:
             data = json.load(f)
-            platforms, coins, enemies = [], [], []
+            platforms, flag, coins, enemies = [], [], [], []
             platforms.extend([pygame.Rect(p["x"], p["y"], p["w"], p["h"]) for p in data["Platforms"]])
+            flag.extend([Flag(f["x"], f["y"]) for f in data["Flags"]])
             coins.extend([Coin(c["x"], c["y"]) for c in data["Coins"]])
             enemies.extend([Goomba(e["x"], e["y"]) for e in data["Goombas"]])
-            return platforms, coins, enemies
+            return platforms, flag, coins, enemies
     
     def draw_cloud(self, x, y):
             pygame.draw.ellipse(self.screen, WHITE, (x, y, 100, 40))
@@ -129,15 +132,24 @@ class Game:
                     continue
                 if mrect.colliderect(e.rect):
                     if player.vel_y > 0 and (mrect.bottom - e.rect.top) < 20:
-                        e.stomped()
+                        # kill enemy
+                        if e.take_damage(from_faction=player.faction):
+                            self.score += e.points
                         player.vel_y = -8
-                        self.score += 200
                     else:
-                        player.reborn()
+                        # kill player
+                        player.take_damage(from_faction=e.faction, respawn_point=self.respawn_point)
+
+            # flags
+            for f in self.flags:
+                if not f.is_checkpoint and mrect.colliderect(f.rect):
+                    f.checkpoint_touched = True
+                    f.update(player.name)
+                    self.respawn_point = (f.x, f.y)
 
             # fell off world
             if player.y > 800:
-                player.reborn()
+                player.take_damage(from_faction='W', respawn_point=self.respawn_point)
 
     def draw_world(self):
         # Draw platforms using images instead of rectangles:
@@ -154,6 +166,11 @@ class Game:
             c.draw(self.screen, self.camera_x)
         for e in self.enemies:
             e.draw(self.screen, self.camera_x)
+        
+        # flags
+        for f in self.flags:
+            f.draw(self.screen, self.camera_x)
+        
 
         # player
         for player in self.player: 
@@ -201,6 +218,11 @@ class Game:
                 self.handle_collisions_and_rules()
             else:
                 pass
+
+            if self.score / 1000 >= 1:
+                for p in self.player:
+                    p.lives += self.score // 1000
+                self.score = self.score % 1000
 
             self.update_camera()
 

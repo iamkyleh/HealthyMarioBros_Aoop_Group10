@@ -2,18 +2,18 @@ from entity import Entity, GRAVITY, FRICTION
 from input import input
 
 class Player(Entity):
-    def __init__(self, name, x, y, keyboard):
-        super().__init__(x, y, width=24, height=32, name=name)
+    def __init__(self, name, rebornpoint, keyboard):
+        super().__init__(rebornpoint[0], rebornpoint[1], width=24, height=32, name=name)
         self.faction = 'P'
         self.lives: int = 3
         self.speed: float = 5.0
         self.jump_strength: float = 15.0
         self.keyboard = keyboard
-
-    def reborn(self):
-        self.lives -= 1
-        self.x, self.y = 80, 400
-        self.vel_x = self.vel_y = 0.0
+    
+    def take_damage(self, from_faction, respawn_point):
+        if super().take_damage(from_faction):
+            self.x, self.y = respawn_point  # respawn position
+        
 
     def actuate(self, keys):
         move_x, jump_pressed = input(keys, self.keyboard)

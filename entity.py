@@ -37,8 +37,14 @@ class Entity(ABC):
     def is_alive(self) -> bool:
         return self.lives > 0
     
-    def take_damage(self, damage=1):
-        self.lives = max(0, self.lives - damage)
+    def take_damage(self, from_faction) -> bool:
+        if not self.is_alive:
+            return False
+        if from_faction != self.faction:
+            self.lives -= 1
+            self.lives = max(0, self.lives)
+            return True
+        return False
     
     @abstractmethod
     def update(self, platforms, keys=None):
