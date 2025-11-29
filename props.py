@@ -54,5 +54,8 @@ class Flag(Props):
     def is_checkpoint(self):
         return self.checkpoint_touched
 
+    def update(self, name):
+        self.image = pygame.image.load(addpath.image_path(f"Flag_checked_{name}.png"))
+
     def draw(self, screen, camera_x):
         screen.blit(self.image, (int(self.x - camera_x), int(self.y)))
