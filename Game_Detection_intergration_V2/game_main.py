@@ -48,6 +48,7 @@ def main():
         pygame.display.flip()
 
         # ======== 5. Show webcam window ========
+
         cv2.imshow("Webcam Pose", frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
