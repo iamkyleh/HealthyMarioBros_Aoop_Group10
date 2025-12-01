@@ -21,9 +21,13 @@ class PoseCamera:
         image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         result = self.pose.process(image_rgb)
 
-        hip_y = None
+        hip_y_left , hip_y_right= None
         if result.pose_landmarks:
-            hip_y = result.pose_landmarks.landmark[
+            hip_y_left = result.pose_landmarks.landmark[
+                self.mp_pose.PoseLandmark.LEFT_HIP.value
+            ].y
+            
+            hip_y_right = result.pose_landmarks.landmark[
                 self.mp_pose.PoseLandmark.LEFT_HIP.value
             ].y
 
@@ -33,7 +37,7 @@ class PoseCamera:
                 self.mp_pose.POSE_CONNECTIONS
             )
 
-        return frame, hip_y
+        return frame, hip_y_left , hip_y_right
 
     def release(self):
         self.cap.release()
