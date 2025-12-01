@@ -197,7 +197,7 @@ class GameClient:
         score_text = self.font.render(f"Score: {status['score']}", True, BLACK)
         self.screen.blit(score_text, (650, 16))
 
-    def _draw_entities(self):
+    def _draw_entities_2(self):
         st = self.latest_state
 
         # =======================
