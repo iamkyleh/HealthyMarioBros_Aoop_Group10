@@ -48,7 +48,8 @@ class Game:
         # fix: use a single mario like the rest of the code expects
         self.respawn_point = (80, 400)
         self.player = [Player('Mario', self.respawn_point, "arrows"), Player('Luigi', self.respawn_point, "wasd")]
-        self.platforms, self.flags, self.coins, self.enemies = self._load_level()
+        self.platforms, self.flags, self.flag_final, self.coins, self.enemies = self._load_level()
+        
         self._selectmode()
 
         # UI state
@@ -62,8 +63,8 @@ class Game:
 
     def _selectmode(self):
         try:
-            # self.playernum = int(input("enter number of players: [1/2]"))
-            self.playernum = 1
+            self.playernum = int(input("enter number of players: [1/2]"))
+            # self.playernum = 1
         except Exception:
             print("invalid input, defaulting to 1 player")
             self.playernum = 1
@@ -90,9 +91,10 @@ class Game:
             platforms, flag, coins, enemies = [], [], [], []
             platforms.extend([pygame.Rect(p["x"], p["y"], p["w"], p["h"]) for p in data["Platforms"]])
             flag.extend([Flag(f["x"], f["y"]) for f in data["Flags"]])
+            flag_final = Flag_final(data["Flag_final"]["x"], data["Flag_final"]["y"])
             coins.extend([Coin(c["x"], c["y"]) for c in data["Coins"]])
             enemies.extend([Goomba(e["x"], e["y"]) for e in data["Goombas"]])
-            return platforms, flag, coins, enemies
+            return platforms, flag, flag_final, coins, enemies
     
     def draw_cloud(self, x, y):
             pygame.draw.ellipse(self.screen, WHITE, (x, y, 100, 40))
@@ -146,6 +148,11 @@ class Game:
                     f.checkpoint_touched = True
                     f.update(player.name)
                     self.respawn_point = (f.x, f.y)
+                
+            # final flag
+            if mrect.colliderect(self.flag_final.rect):
+                self.won = True
+                self.flag_final.update(player.name)
 
             # fell off world
             if player.y > 800:
@@ -170,6 +177,7 @@ class Game:
         # flags
         for f in self.flags:
             f.draw(self.screen, self.camera_x)
+        self.flag_final.draw(self.screen, self.camera_x)
         
 
         # player
@@ -234,6 +242,7 @@ class Game:
 
             pygame.display.flip()
             self.clock.tick(FPS)
+        
 
         pygame.quit()
         sys.exit()

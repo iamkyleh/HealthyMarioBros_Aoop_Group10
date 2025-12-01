@@ -13,7 +13,6 @@ class Player(Entity):
     def take_damage(self, from_faction, respawn_point):
         if super().take_damage(from_faction):
             self.x, self.y = respawn_point  # respawn position
-        
 
     def actuate(self, keys):
         move_x, jump_pressed = input(keys, self.keyboard)

@@ -48,17 +48,31 @@ class Coin(Props):
     
 class Flag(Props):
     def __init__(self, x, y):
-        self.width = 48
-        self.height = 144
-        super().__init__(x, y, width=self.width, height=self.height)
+        super().__init__(x, y, width=48, height=144)
         self.checkpoint_touched = False
 
     @property
     def is_checkpoint(self):
         return self.checkpoint_touched
 
-    def update(self, name):
-        self.image = pygame.image.load(addpath.image_path(f"Flag_checked_{name}.png"))
+    def update(self, player_name):
+        self.image = pygame.image.load(addpath.image_path(f"Flag_{player_name}.png"))
+        self.image = pygame.transform.scale(self.image, (self.width, self.height))
+
+    def draw(self, screen, camera_x):
+        screen.blit(self.image, (int(self.x - camera_x), int(self.y)))
+
+class Flag_final(Props):
+    def __init__(self, x, y, width=48, height=256):
+        super().__init__(x, y, width=width, height=height)
+        self.checkpoint_touched = False
+
+    @property
+    def is_checkpoint(self):
+        return self.checkpoint_touched
+
+    def update(self, player_name):
+        self.image = pygame.image.load(addpath.image_path(f"Flag_final_{player_name}.png"))
         self.image = pygame.transform.scale(self.image, (self.width, self.height))
 
     def draw(self, screen, camera_x):
