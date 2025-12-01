@@ -140,76 +140,83 @@ class GameClient:
 
     def _draw(self):
         self.screen.fill(SKY_BLUE)
-
         # --- CLOUD BACKGROUND ---
         for i in range(10):
             cx = (i * 200 - int(self.camera_x * 0.5)) % (SCREEN_WIDTH + 100) - 50
             cy = 80 + (i % 3) * 30
             self._draw_cloud(cx, cy)
 
-        # --- PLATFORMS ---
-        if self.latest_state:
-            # platfrom
-            pf = self.latest_state["platform"]
-            for b in pf["brick"]:
-                rect = pygame.Rect(b["x"], b["y"], b["w"], b["h"])
-                draw_tiled(self.screen, self.image["Brick"], rect, self.camera_x)
-            for p in pf["pipe"]:
-                rect = pygame.Rect(p["x"], p["y"], p["w"], p["h"])
-                draw_tiled(self.screen, self.image["Pipe"], rect, self.camera_x)
-            # entity
-            entity = self.latest_state["entity"]
-            for en in entity["goomba"]:
-            self._draw_entities()
+        # check if we have a latest state
+        if not self.latest_state:
+            return
+
+        self._draw_platform_and_pipe()
+        self._draw_entities()
+        self._draw_props()
+        self._draw_status()
+
         pygame.display.flip()
 
+    def _draw_platform_and_pipe(self):
+        pf = self.latest_state["platform"]
+        for b in pf["brick"]:
+            rect = pygame.Rect(b["x"], b["y"], b["w"], b["h"])
+            draw_tiled(self.screen, self.image["Brick"], rect, 0)
+        for p in pf["pipe"]:
+            rect = pygame.Rect(p["x"], p["y"], p["w"], p["h"])
+            draw_tiled(self.screen, self.image["Pipe"], rect, 0)
+
+    def _draw_entities(self):
+        ent = self.latest_state["entity"]
+        for name, parameters in ent.items():
+            name = name.capitalize()
+            img = self.image.get(name)
+            if parameters["dir"] == -1:
+                img = pygame.transform.flip(img, True, False)
+            self.screen.blit(img, (parameters["x"], parameters["y"]))
+    
+    def _draw_props(self):
+        props = self.latest_state["prop"]
+        for f in props["flag"]:
+            img = self.image[f"Flag_{f["name"]}"]
+            self.screen.blit(img, (f["x"], f["y"]))
+        ff = props["flag_final"]
+        img = self.image[f"Flag_final_{ff['name']}"]
+        self.screen.blit(img, (ff["x"], ff["y"]))
+    
+    def _draw_status(self):
+        status = self.latest_state["status"]
+        y = 16
+        mario_text = self.font.render(f"Mario X {status['mario_lives']}", True, BLACK)
+        self.screen.blit(mario_text, (16, y))
+        y += self.font.get_linesize()
+
+        luigi_text = self.font.render(f"Luigi X {status['luigi_lives']}", True, BLACK)
+        self.screen.blit(luigi_text, (16, y))
+
+        score_text = self.font.render(f"Score: {status['score']}", True, BLACK)
+        self.screen.blit(score_text, (650, 16))
 
     def _draw_entities(self):
         st = self.latest_state
 
-        # Coins
-        for c in st["coins"]:
-            scale = abs(math.sin(self.rotation))
-            scaled_w = max(2, int(self.width * scale))  # never go to 0 width
-            scaled_image = pygame.transform.scale(self.image, (scaled_w, self.height))
-            # center it where the coin’s middle should be
-            x = int(self.x - camera_x) + (self.width - scaled_w) // 2
-            y = int(self.y)
-            screen.blit(scaled_image, (x, y))
+        # =======================
+        #         PROPS
+        # =======================
+        props = st["prop"]
 
-        # Enemies
-        for e in st["enemies"]:
-            if e["alive"]:
-                pygame.draw.rect(self.screen, RED,
-                                 (e["x"] - self.camera_x, e["y"], e["w"], e["h"]))
+        # --- COINS ---
+        for c in props["coin"]:
+            img = self.image["Coin"]
+            # apply rotation stretch illusion
+            import math
+            scale = abs(math.sin(c["rotate"]))
+            scaled_w = max(2, int(img.get_width() * scale))
+            scaled_img = pygame.transform.scale(img, (scaled_w, img.get_height()))
 
-        # Flags
-        for f in st["flags"]:
-            color = (50, 180, 50) if f["checkpoint_touched"] else (50, 120, 50)
-            pygame.draw.rect(self.screen, color,
-                             (f["x"] - self.camera_x, f["y"], f["w"], f["h"]))
-
-        ff = st["flag_final"]
-        pygame.draw.rect(self.screen, (30, 160, 30),
-                         (ff["x"] - self.camera_x, ff["y"], ff["w"], ff["h"]))
-
-        # Players + HUD
-        y_ui = 16
-        for p in st["players"]:
-            pygame.draw.rect(self.screen, BLACK,
-                             (p["x"] - self.camera_x, p["y"], p["w"], p["h"]))
-            lives_ui = self.font.render(f"{p['name']} X {p['lives']}", True, BLACK)
-            self.screen.blit(lives_ui, (16, y_ui))
-            y_ui += self.font.get_linesize()
-
-        # Score + win message
-        score_ui = self.font.render(f"Score: {st['score']}", True, BLACK)
-        self.screen.blit(score_ui, (650, 16))
-
-        if st["won"]:
-            msg = self.big_font.render("YOU REACHED THE FLAG!", True, BLACK)
-            self.screen.blit(msg,
-                             (SCREEN_WIDTH // 2 - msg.get_width() // 2, 80))
+            x = c["x"] + (img.get_width() - scaled_w) // 2
+            y = c["y"]
+            self.screen.blit(scaled_img, (x, y))
 
 
 if __name__ == "__main__":
