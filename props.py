@@ -56,7 +56,7 @@ class Flag(Props):
         return self.checkpoint_touched
 
     def update(self, player_name):
-        self.image = pygame.image.load(addpath.image_path(f"Flag_checked_{player_name}.png"))
+        self.image = pygame.image.load(addpath.image_path(f"Flag_{player_name}.png"))
         self.image = pygame.transform.scale(self.image, (self.width, self.height))
 
     def draw(self, screen, camera_x):
@@ -72,7 +72,7 @@ class Flag_final(Props):
         return self.checkpoint_touched
 
     def update(self, player_name):
-        self.image = pygame.image.load(addpath.image_path(f"Flag_final_checked_{player_name}.png"))
+        self.image = pygame.image.load(addpath.image_path(f"Flag_final_{player_name}.png"))
         self.image = pygame.transform.scale(self.image, (self.width, self.height))
 
     def draw(self, screen, camera_x):
