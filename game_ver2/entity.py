@@ -1,4 +1,6 @@
 # Server-side entity classes (no drawing code)
+import pygame
+
 GRAVITY = 0.8
 FRICTION = 0.85
 
@@ -21,31 +23,9 @@ class Entity:
         self.lives: int = 1
     
     @property
-    def rect(self):
-        """Return a dict representation of rect for collision detection"""
-        return {
-            "x": int(self.x),
-            "y": int(self.y),
-            "width": self.width,
-            "height": self.height
-        }
-    
-    def get_rect_pygame_style(self):
-        """Helper to create a rect-like object for collision"""
-        class Rect:
-            def __init__(self, x, y, w, h):
-                self.left = x
-                self.top = y
-                self.right = x + w
-                self.bottom = y + h
-                self.width = w
-                self.height = h
-            def colliderect(self, other):
-                return not (self.right <= other.left or 
-                           self.left >= other.right or
-                           self.bottom <= other.top or
-                           self.top >= other.bottom)
-        return Rect(int(self.x), int(self.y), self.width, self.height)
+    def rect(self) -> pygame.Rect:
+        """Return pygame.Rect for collision detection"""
+        return pygame.Rect(int(self.x), int(self.y), self.width, self.height)
     
     @property
     def is_alive(self) -> bool:
@@ -62,7 +42,7 @@ class Entity:
     
     def move_and_collide_horizonal(self, platforms):
         self.x += self.vel_x
-        r = self.get_rect_pygame_style()
+        r = self.rect
         for p in platforms:
             if r.colliderect(p):
                 self.x -= self.vel_x
@@ -70,7 +50,7 @@ class Entity:
 
     def move_and_collide_vertical(self, platforms):
         self.y += self.vel_y
-        r = self.get_rect_pygame_style()
+        r = self.rect
         for p in platforms:
             if r.colliderect(p):
                 if self.vel_y > 0:

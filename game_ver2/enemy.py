@@ -1,4 +1,5 @@
 from entity import Entity
+import pygame
 
 class Enemy(Entity):
     def __init__(self, x, y, width=32, height=32, points=200):
@@ -14,21 +15,8 @@ class Enemy(Entity):
     def _ground_ahead(self, platforms, step=6):
         """Return True if there's ground under the leading edge after a small step."""
         probe_x = self.x + (self.width + 1 if self.vel_x > 0 else -1) + (step if self.vel_x > 0 else -step)
-        # Create a simple rect-like object for probing
-        class ProbeRect:
-            def __init__(self, x, y, w, h):
-                self.left = x
-                self.top = y
-                self.right = x + w
-                self.bottom = y + h
-        probe_rect = ProbeRect(int(probe_x), int(self.y + self.height + 1), 2, 2)
-        for p in platforms:
-            if not (probe_rect.right <= p.left or 
-                   probe_rect.left >= p.right or
-                   probe_rect.bottom <= p.top or
-                   probe_rect.top >= p.bottom):
-                return True
-        return False
+        probe_rect = pygame.Rect(int(probe_x), int(self.y + self.height + 1), 2, 2)
+        return any(p.colliderect(probe_rect) for p in platforms)        
 
     def wander_horizonal(self, platforms):
         # horizontal patrol
@@ -52,4 +40,3 @@ class Goomba(Enemy):
         self.vel_y += 0.8
         self.wander_horizonal(platforms)
         self.move_and_collide_vertical(platforms)
-
