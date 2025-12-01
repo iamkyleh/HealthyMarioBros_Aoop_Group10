@@ -1,0 +1,30 @@
+{
+    "status": {
+        "mario_lives": x
+        "luigi_lives": x
+        "score": x
+    }
+    "platform": {
+        "brick": 
+        "pipe":
+        ...
+    }
+    "entity": {
+        "mario": {"x", "y", "dir"}
+        "luigi": {"x", "y", "dir"}
+        "goomba": {"x", "y", "dir"}
+        "goomba": {"x", "y", "dir"}
+        "goomba": {"x", "y", "dir"}
+    }
+    "prop":{
+        "coin": [
+            {"x", "y", "rotate"},
+            {"x", "y", "rotate"}
+        ]
+        "flag": [
+            {"x", "y", "name"},
+            {"x", "y", "name"}
+        ]
+        "flag_final": {"x", "y", "name"}
+    }
+}
