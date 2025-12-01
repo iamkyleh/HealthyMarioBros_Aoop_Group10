@@ -49,6 +49,7 @@ class Game:
         self.respawn_point = (80, 400)
         self.player = [Player('Mario', self.respawn_point, "arrows"), Player('Luigi', self.respawn_point, "wasd")]
         self.platforms, self.flags, self.flag_final, self.coins, self.enemies = self._load_level()
+        
         self._selectmode()
 
         # UI state
@@ -62,8 +63,8 @@ class Game:
 
     def _selectmode(self):
         try:
-            # self.playernum = int(input("enter number of players: [1/2]"))
-            self.playernum = 1
+            self.playernum = int(input("enter number of players: [1/2]"))
+            # self.playernum = 1
         except Exception:
             print("invalid input, defaulting to 1 player")
             self.playernum = 1
