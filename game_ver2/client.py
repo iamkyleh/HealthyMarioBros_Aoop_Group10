@@ -7,6 +7,7 @@ import addpath
 
 HOST = "127.0.0.1"
 PORT = 5000
+
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
 FPS = 60
