@@ -285,6 +285,8 @@ class Server:
         """Initialize network and accept clients"""
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Enable TCP_NODELAY to reduce latency (disable Nagle's algorithm)
+        self.server.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self.server.bind((HOST, PORT))
         self.server.listen()
         print(f"Server listening on {HOST}:{PORT}")
@@ -301,12 +303,32 @@ class Server:
                 player = self.game.add_player(player_name)
                 self.name_to_socket[player_name] = conn
                 
+                # Set socket options for low latency
+                conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                conn.settimeout(None)  # Blocking mode for server
+                
+                # Small delay to ensure connection is fully established
+                import time
+                time.sleep(0.05)  # 50ms delay
+                
                 # Send welcome message with player name and platform data
-                send_json(conn, {
-                    "welcome": "Welcome to HealthyMarioBros",
-                    "player_name": player_name,
-                    "platform": self.game.get_init_dict()["platform"]
-                })
+                try:
+                    welcome_msg = {
+                        "welcome": "Welcome to HealthyMarioBros",
+                        "player_name": player_name,
+                        "platform": self.game.get_init_dict()["platform"]
+                    }
+                    print(f"Sending welcome message to {player_name}...")
+                    send_json(conn, welcome_msg)
+                    print(f"Welcome message sent to {player_name}")
+                except Exception as e:
+                    print(f"Error sending welcome message to {player_name}: {e}")
+                    # Remove client if we can't send welcome
+                    self.clients.remove(conn)
+                    del self.name_to_socket[player_name]
+                    self.game.players = [p for p in self.game.players if p.name != player_name]
+                    conn.close()
+                    raise
         
         print(f"All {self.playerNum} clients connected. Starting game...")
     
@@ -328,21 +350,33 @@ class Server:
     
     def __handle_client(self, sock, player_name):
         """Handle input from a single client"""
+        # Set socket to non-blocking with timeout for this thread
+        sock.settimeout(1.0)  # 1 second timeout - allows client to send at its own pace
+        
         while self.running:
             try:
-                data = recv_json(sock)
+                # Use a longer timeout for server-side receiving
+                data = recv_json(sock, timeout=1.0)
                 if data is None:
-                    # Connection closed
-                    print(f"Connection closed by {player_name}")
-                    self.__remove_client(sock, player_name)
-                    break
+                    # Timeout - no data received, but connection might still be alive
+                    # This is normal when client isn't sending input
+                    continue
                 if data:
                     # Store input for this player (data should be {"move": int, "jump": bool, "attack": bool})
                     self.client_inputs[player_name] = data
-            except Exception as e:
-                print(f"Error receiving from {player_name}: {e}")
+            except (socket.error, OSError, ConnectionError, BrokenPipeError) as e:
+                # Connection error - remove client
+                err_code = getattr(e, 'winerror', getattr(e, 'errno', None))
+                if err_code in (10053, 10054, 10057, 10058):  # Connection aborted/closed errors
+                    print(f"Connection closed by {player_name}: {e}")
+                else:
+                    print(f"Error receiving from {player_name}: {e}")
                 self.__remove_client(sock, player_name)
                 break
+            except Exception as e:
+                # Other errors - log but don't necessarily disconnect
+                print(f"Unexpected error from {player_name}: {e}")
+                # Continue running unless it's a critical error
     
     def __start_game_loop(self):
         """Start game update loop and client handlers"""

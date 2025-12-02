@@ -61,23 +61,56 @@ class GameClient:
 
     # -------------------- Networking ------------------------
     def _init_networking(self):
-        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.s.connect((HOST, PORT))
+        try:
+            self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            # Enable TCP_NODELAY for low latency
+            self.s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            # For initial connection, use a longer timeout to ensure welcome message is received
+            self.s.settimeout(10.0)  # 10 second timeout for initial connection
+            print(f"Connecting to {HOST}:{PORT}...")
+            self.s.connect((HOST, PORT))
+            print("Connected! Waiting for welcome message...")
 
-        # Welcome packet with platform data
-        msg = recv_json(self.s)
-        if msg and "welcome" in msg:
-            if "platform" in msg:
-                self.platforms = msg["platform"]
-            if "player_name" in msg:
-                self.name = msg["player_name"]
+            # Welcome packet with platform data - wait with longer timeout
+            # Try multiple times in case of timing issues
+            msg = None
+            for attempt in range(3):
+                msg = recv_json(self.s, timeout=5.0)  # Wait up to 5 seconds for welcome
+                if msg:
+                    break
+                print(f"Attempt {attempt + 1} failed, retrying...")
+                import time
+                time.sleep(0.1)  # Small delay before retry
+            
+            if msg and "welcome" in msg:
+                if "platform" in msg:
+                    self.platforms = msg["platform"]
+                if "player_name" in msg:
+                    self.name = msg["player_name"]
+                print(f"Connected as {self.name}")
+            else:
+                print(f"Failed to receive welcome message. Received: {msg}")
+                if msg:
+                    print(f"Message keys: {msg.keys() if isinstance(msg, dict) else 'Not a dict'}")
+                self.running = False
+                return
+        except Exception as e:
+            print(f"Connection error: {e}")
+            self.running = False
+            return
+        
+        # Now switch to non-blocking mode for game loop
+        self.s.settimeout(0.01)  # 10ms timeout for game loop
 
     # -------------------- Game Loop -------------------------
     def run(self):
         while self.running:
             self._handle_events()
-            self._send_input()
+            # Receive state first (non-blocking)
             self._receive_state()
+            # Then send input
+            self._send_input()
+            # Draw
             self._draw()
             self.clock.tick(FPS)
         pygame.quit()
@@ -91,6 +124,10 @@ class GameClient:
 
     # --------------------- Input Send -----------------------
     def _send_input(self):
+        # Check if socket is still valid
+        if self.s is None or not self.running:
+            return
+            
         keys = pygame.key.get_pressed()
         move = 0
         if keys[pygame.K_LEFT] or keys[pygame.K_a]:
@@ -100,32 +137,62 @@ class GameClient:
         
         jump = bool(keys[pygame.K_UP] or keys[pygame.K_w])
         attack = bool(keys[pygame.K_SPACE])
-        try:
-            # Format according to format.txt: {"mario": {...}, "luigi": {...}}
-            # Send input with player name as key
-            if self.name:
-                send_json(self.s, {self.name.lower(): {"move": move, "jump": jump, "attack": attack}})
-            else:
-                # Fallback if name not received
-                send_json(self.s, {"move": move, "jump": jump, "attack": attack})
-        except Exception as e:
-            print(f"Error sending input: {e}")
-            self.running = False
+        
+        # Only send if input changed or every few frames to reduce network traffic
+        current_input = {"move": move, "jump": jump, "attack": attack}
+        if not hasattr(self, '_last_input') or self._last_input != current_input:
+            try:
+                # Format according to format.txt: {"mario": {...}, "luigi": {...}}
+                # Send input with player name as key
+                if self.name:
+                    send_json(self.s, {self.name.lower(): current_input})
+                else:
+                    # Fallback if name not received
+                    send_json(self.s, current_input)
+                self._last_input = current_input
+            except (socket.error, OSError, ConnectionError, BrokenPipeError) as e:
+                # Connection lost - stop trying to send
+                print(f"Connection lost: {e}")
+                self.running = False
+            except Exception as e:
+                # Other errors - log but don't necessarily stop
+                print(f"Error sending input: {e}")
+                # Only stop on critical errors
+                if "10053" in str(e) or "10054" in str(e) or "Connection" in str(type(e).__name__):
+                    self.running = False
 
     # -------------------- RECEIVE STATE ---------------------
     def _receive_state(self):
+        """Receive state updates (non-blocking, won't stall game loop)"""
+        if self.s is None or not self.running:
+            return
+            
         try:
-            msg = recv_json(self.s)
-            if msg is None:
-                # Connection closed
-                print("Connection closed by server")
-                self.running = False
-                return
-            if "status" in msg:  # Check if it's a state update
-                self.latest_state = msg
-        except Exception as e:
-            print(f"Error receiving state: {e}")
+            # Try to receive multiple messages if available (catch up on missed frames)
+            for _ in range(5):  # Max 5 messages per frame to prevent lag
+                msg = recv_json(self.s, timeout=0.001)  # Very short timeout
+                if msg is None:
+                    break  # No more data available
+                if "status" in msg:  # Check if it's a state update
+                    self.latest_state = msg
+                elif "welcome" in msg:
+                    # Handle welcome message if received late
+                    if "platform" in msg:
+                        self.platforms = msg["platform"]
+                    if "player_name" in msg:
+                        self.name = msg["player_name"]
+        except (socket.error, OSError, ConnectionError, BrokenPipeError) as e:
+            # Connection lost
+            print(f"Connection lost while receiving: {e}")
             self.running = False
+        except Exception as e:
+            # Only stop on actual connection errors, not timeouts
+            err_str = str(e).lower()
+            if "timed out" not in err_str and "10060" not in str(e):
+                # Check for connection abort errors
+                if "10053" in str(e) or "10054" in str(e) or "connection" in err_str:
+                    print(f"Connection error: {e}")
+                    self.running = False
 
     # -------------------- DRAW FUNCTIONS --------------------
     def _draw_cloud(self, x, y):
