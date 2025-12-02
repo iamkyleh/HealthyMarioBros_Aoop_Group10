@@ -13,7 +13,7 @@ from enemy import Goomba
 from props import Coin, Flag, Flag_final
 import addpath
 
-HOST = '127.0.0.1'
+HOST = '0.0.0.0'
 PORT = 5000
 
 SCREEN_WIDTH = 800

@@ -345,4 +345,5 @@ class GameClient:
 
 
 if __name__ == "__main__":
+    print("!!! NOTICE !!!\nCheck the HOST is on the correct IP address.\nPlace it with IPv4 address of the server.")
     GameClient().run()
