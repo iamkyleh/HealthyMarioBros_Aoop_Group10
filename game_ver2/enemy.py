@@ -21,7 +21,7 @@ class Enemy(Entity):
     def wander_horizonal(self, platforms):
         # horizontal patrol
         self.x += self.vel_x
-        r = self.get_rect_pygame_style()
+        r = self.rect
         for p in platforms:
             if r.colliderect(p):
                 self.x -= self.vel_x

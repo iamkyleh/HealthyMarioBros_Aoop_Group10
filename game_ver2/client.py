@@ -107,16 +107,23 @@ class GameClient:
             else:
                 # Fallback if name not received
                 send_json(self.s, {"move": move, "jump": jump, "attack": attack})
-        except:
+        except Exception as e:
+            print(f"Error sending input: {e}")
             self.running = False
 
     # -------------------- RECEIVE STATE ---------------------
     def _receive_state(self):
         try:
             msg = recv_json(self.s)
-            if msg and "status" in msg:  # Check if it's a state update
+            if msg is None:
+                # Connection closed
+                print("Connection closed by server")
+                self.running = False
+                return
+            if "status" in msg:  # Check if it's a state update
                 self.latest_state = msg
-        except:
+        except Exception as e:
+            print(f"Error receiving state: {e}")
             self.running = False
 
     # -------------------- DRAW FUNCTIONS --------------------

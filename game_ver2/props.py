@@ -29,6 +29,13 @@ class Flag(Props):
     def __init__(self, x, y):
         super().__init__(x, y, width=48, height=144)
         self.owner_name = ""
+    
+    @property
+    def is_checkpoint(self):
+        return self.owner_name != ""
+    @property
+    def touched_by(self):
+        return self.owner_name
 
     def update(self, player_name):
         self.owner_name = player_name
@@ -37,6 +44,13 @@ class Flag_final(Props):
     def __init__(self, x, y, width=48, height=256):
         super().__init__(x, y, width=width, height=height)
         self.owner_name = ""
+
+    @property
+    def is_checkpoint(self):
+        return self.owner_name != ""
+    @property
+    def touched_by(self):
+        return self.owner_name
 
     def update(self, player_name):
         self.owner_name = player_name

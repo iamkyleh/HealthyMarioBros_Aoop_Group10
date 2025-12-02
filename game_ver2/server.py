@@ -4,9 +4,10 @@ import threading
 import time
 import sys
 import os
+import pygame
 
 # Add parent directory to path to import game_ver1 modules if needed
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from net import send_json, recv_json
 from player import Player
@@ -20,32 +21,17 @@ PORT = 5000
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
 
-class Rect:
-    """Simple rect class for collision detection"""
-    def __init__(self, x, y, w, h):
-        self.left = x
-        self.top = y
-        self.right = x + w
-        self.bottom = y + h
-        self.width = w
-        self.height = h
-    
-    def colliderect(self, other):
-        return not (self.right <= other.left or 
-                   self.left >= other.right or
-                   self.bottom <= other.top or
-                   self.top >= other.bottom)
-
 class Game:
     def __init__(self):
         self.respawn_point = (80, 400)
-        self.platforms, self.flags, self.flag_final, self.coins, self.enemies = self._load_level()
+        self.filename = "world1"
+        self.platforms, self.flags, self.flag_final, self.coins, self.enemies = self._load_level(self.filename)
         self.players = []
         self.score = 0
         self.won = False
         self.camera_x = 0
         
-    def _load_level(self, filename="world1"):
+    def _load_level(self, filename):
         with open(addpath.world_path(f"{filename}.json")) as f:
             data = json.load(f)
             platforms = []
@@ -55,16 +41,17 @@ class Game:
             
             # Load platforms
             for p in data["Platforms"]:
-                platforms.append(Rect(p["x"], p["y"], p["w"], p["h"]))
+                platforms.append(pygame.Rect(p["x"], p["y"], p["w"], p["h"]))
             
             # Load pipes
             if "Pipe" in data:
                 for p in data["Pipe"]:
-                    platforms.append(Rect(p["x"], p["y"], p["w"], p["h"]))
+                    platforms.append(pygame.Rect(p["x"], p["y"], p["w"], p["h"]))
             
             # Load flags
             if "Flags" in data:
-                flags.extend([Flag(f["x"], f["y"]) for f in data["Flags"]])
+                for f in data["Flags"]:
+                    flags.append(Flag(f["x"], f["y"]))
             
             # Load final flag
             if "Flag_final" in data:
@@ -74,11 +61,13 @@ class Game:
             
             # Load coins
             if "Coins" in data:
-                coins.extend([Coin(c["x"], c["y"]) for c in data["Coins"]])
+                for c in data["Coins"]:
+                    coins.append(Coin(c["x"], c["y"]))
             
             # Load enemies
             if "Goombas" in data:
-                enemies.extend([Goomba(e["x"], e["y"]) for e in data["Goombas"]])
+                for e in data["Goombas"]:
+                    enemies.append(Goomba(e["x"], e["y"]))
             
             return platforms, flags, flag_final, coins, enemies
     
@@ -112,11 +101,11 @@ class Game:
         for player in self.players:
             if not player.is_alive:
                 continue
-            mrect = player.get_rect_pygame_style()
+            mrect = player.rect
             
             # Coins
             for c in self.coins:
-                if not c.collected and mrect.colliderect(c.get_rect_pygame_style()):
+                if not c.collected and mrect.colliderect(c.rect):
                     c.collected = True
                     self.score += 100
             
@@ -124,8 +113,8 @@ class Game:
             for e in self.enemies:
                 if not e.is_alive:
                     continue
-                if mrect.colliderect(e.get_rect_pygame_style()):
-                    if player.vel_y > 0 and (mrect.bottom - e.get_rect_pygame_style().top) < 20:
+                if mrect.colliderect(e.rect):
+                    if player.vel_y > 0 and (mrect.bottom - e.rect.top) < 20:
                         # Kill enemy
                         if e.take_damage(from_faction=player.faction):
                             self.score += e.points
@@ -136,12 +125,12 @@ class Game:
 
             # Flags
             for f in self.flags:
-                if not f.is_checkpoint and mrect.colliderect(f.get_rect_pygame_style()):
+                if not f.is_checkpoint and mrect.colliderect(f.rect):
                     f.update(player.name)
                     self.respawn_point = (f.x, f.y)
             
             # Final flag
-            if self.flag_final and mrect.colliderect(self.flag_final.get_rect_pygame_style()):
+            if self.flag_final and mrect.colliderect(self.flag_final.rect):
                 self.won = True
                 self.flag_final.update(player.name)
 
@@ -158,10 +147,7 @@ class Game:
         for player in self.players:
             if player.name in player_inputs:
                 inp = player_inputs[player.name]
-                player.update(self.platforms, 
-                            move_x=inp.get("move", 0),
-                            jump=inp.get("jump", False),
-                            attack=inp.get("attack", False))
+                player.update(self.platforms, inp)
         
         # Update enemies
         for e in self.enemies:
@@ -323,16 +309,38 @@ class Server:
         
         print(f"All {self.playerNum} clients connected. Starting game...")
     
+    def __remove_client(self, sock, player_name):
+        """Remove a disconnected client from all lists"""
+        try:
+            if sock in self.clients:
+                self.clients.remove(sock)
+            if player_name in self.name_to_socket:
+                del self.name_to_socket[player_name]
+            if player_name in self.client_inputs:
+                del self.client_inputs[player_name]
+            # Remove player from game
+            self.game.players = [p for p in self.game.players if p.name != player_name]
+            print(f"Client {player_name} disconnected and removed")
+            sock.close()
+        except Exception as e:
+            print(f"Error removing client {player_name}: {e}")
+    
     def __handle_client(self, sock, player_name):
         """Handle input from a single client"""
         while self.running:
             try:
                 data = recv_json(sock)
+                if data is None:
+                    # Connection closed
+                    print(f"Connection closed by {player_name}")
+                    self.__remove_client(sock, player_name)
+                    break
                 if data:
                     # Store input for this player (data should be {"move": int, "jump": bool, "attack": bool})
                     self.client_inputs[player_name] = data
             except Exception as e:
                 print(f"Error receiving from {player_name}: {e}")
+                self.__remove_client(sock, player_name)
                 break
     
     def __start_game_loop(self):
@@ -363,11 +371,24 @@ class Server:
             
             # Send state to all clients
             state = self.game.get_state_dict()
+            disconnected_clients = []
             for sock in self.clients:
                 try:
                     send_json(sock, state)
                 except Exception as e:
                     print(f"Error sending to client: {e}")
+                    # Find which player this socket belongs to
+                    player_name = None
+                    for name, s in self.name_to_socket.items():
+                        if s == sock:
+                            player_name = name
+                            break
+                    if player_name:
+                        disconnected_clients.append((sock, player_name))
+            
+            # Remove disconnected clients
+            for sock, player_name in disconnected_clients:
+                self.__remove_client(sock, player_name)
             
             # Frame rate control (60 FPS)
             elapsed = time.time() - clock
