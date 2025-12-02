@@ -1,8 +1,8 @@
 from entity import Entity, GRAVITY, FRICTION
 
 class Player(Entity):
-    def __init__(self, name, rebornpoint):
-        super().__init__(rebornpoint[0], rebornpoint[1], width=24, height=32, name=name)
+    def __init__(self, name, rebornpoint, width=24, height=32):
+        super().__init__(rebornpoint[0], rebornpoint[1], width=width, height=height, name=name)
         self.faction = 'P'
         self.lives: int = 3
         self.speed: float = 5.0
