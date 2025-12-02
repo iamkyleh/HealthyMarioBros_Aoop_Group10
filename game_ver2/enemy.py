@@ -32,7 +32,7 @@ class Enemy(Entity):
 
 class Goomba(Enemy):
     def __init__(self, x, y):
-        super().__init__(x, y, points=2000)
+        super().__init__(x, y, width=32, height=32, points=400)
     
     def update(self, platforms):
         if not self.is_alive:
@@ -40,3 +40,16 @@ class Goomba(Enemy):
         self.vel_y += 0.8
         self.wander_horizonal(platforms)
         self.move_and_collide_vertical(platforms)
+        self.direction = 1 if self.vel_x>0 else -1
+
+class KoopaTroopa(Enemy):
+    def __init__(self, x, y):
+        super().__init__(x, y, width=32, height=46, points=500)
+    
+    def update(self, platforms):
+        if not self.is_alive:
+            return
+        self.vel_y += 0.8
+        self.wander_horizonal(platforms)
+        self.move_and_collide_vertical(platforms)
+        self.direction = 1 if self.vel_x>0 else -1
