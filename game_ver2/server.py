@@ -8,9 +8,9 @@ import pygame
 # sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from net import send_json, recv_json
-from player import Player
-from enemy import Goomba
-from props import Coin, Flag, Flag_final
+from player import *
+from enemy import *
+from props import *
 import addpath
 
 HOST = '0.0.0.0'
@@ -19,11 +19,17 @@ PORT = 5000
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
 
+enemy_classes = {
+    "Goomba": Goomba,
+    "KoopaTroopa": KoopaTroopa,
+}
+
 class Game:
     def __init__(self):
         self.respawn_point = (80, 400)
         self.filename = "world1"
-        self.platforms, self.flags, self.flag_final, self.coins, self.enemies = self._load_level(self.filename)
+        self.platforms, self.flags, self.flag_final, self.coins, self.enemies = [], [], None, [], []
+        self._load_level(self.filename)
         self.players = []
         self.score = 0
         self.won = False
@@ -32,37 +38,31 @@ class Game:
     def _load_level(self, filename):
         with open(addpath.world_path(f"{filename}.json")) as f:
             data = json.load(f)
-            platforms = []
-            flags = []
-            coins = []
-            enemies = []
             
             # Load platforms
             for p in data["Platforms"]:
-                platforms.append(pygame.Rect(p["x"], p["y"], p["w"], p["h"]))
+                self.platforms.append(pygame.Rect(p["x"], p["y"], p["w"], p["h"]))
             
             # Load flags
             if "Flags" in data:
                 for f in data["Flags"]:
-                    flags.append(Flag(f["x"], f["y"]))
+                    self.flags.append(Flag(f["x"], f["y"]))
             
             # Load final flag
             if "Flag_final" in data:
-                flag_final = Flag_final(data["Flag_final"]["x"], data["Flag_final"]["y"])
-            else:
-                flag_final = None
+                self.flag_final = Flag_final(data["Flag_final"]["x"], data["Flag_final"]["y"])
             
             # Load coins
             if "Coins" in data:
                 for c in data["Coins"]:
-                    coins.append(Coin(c["x"], c["y"]))
+                    self.coins.append(Coin(c["x"], c["y"]))
             
             # Load enemies
-            if "Goombas" in data:
-                for e in data["Goombas"]:
-                    enemies.append(Goomba(e["x"], e["y"]))
-            
-            return platforms, flags, flag_final, coins, enemies
+            for e in data["Enemies"]:
+                cls = enemy_classes[e["type"]]
+                enemy = cls(e["x"], e["y"])
+                self.enemies.append(enemy)
+
     
     def add_player(self, name):
         """Add a new player to the game"""
@@ -184,21 +184,16 @@ class Game:
                     "dir": player.direction
                 }
         
-        # Handle goombas - format.txt shows multiple, so we'll use a list approach
+        # Handle enemies - format.txt shows multiple, so we'll use a list approach
         # But since JSON doesn't allow duplicate keys, we'll send them as goomba_0, goomba_1, etc.
         # Or we can send as a list in a different structure. Let's use indexed keys for now.
-        goomba_list = []
-        for e in self.enemies:
-            if e.is_alive:
-                goomba_list.append({
-                    "x": int(e.x - self.camera_x),
-                    "y": int(e.y),
-                    "dir": e.direction
-                })
-        
-        # Add goombas to entities (using indexed keys to handle multiple)
-        for i, goomba in enumerate(goomba_list):
-            entities[f"Goomba_{i}"] = goomba
+        for i, enemy in enumerate(self.enemies):
+            if enemy.is_alive:
+                entities[f"{enemy.__class__.__name__}_{i}"] = {
+                    "x": int(enemy.x - self.camera_x),
+                    "y": int(enemy.y),
+                    "dir": enemy.direction
+                }
         
         # Build prop data
         coins_data = []
