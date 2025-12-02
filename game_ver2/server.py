@@ -300,7 +300,7 @@ class Server:
             # Assign player name
             if i < len(self.available_names):
                 player_name = self.available_names[i]
-                player = self.game.add_player(player_name)
+                self.game.add_player(player_name)
                 self.name_to_socket[player_name] = conn
                 
                 # Set socket options for low latency

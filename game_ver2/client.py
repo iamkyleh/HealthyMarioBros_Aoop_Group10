@@ -322,6 +322,5 @@ class GameClient:
         self.screen.blit(score_text, (650, 16))
 
 
-
 if __name__ == "__main__":
     GameClient().run()
