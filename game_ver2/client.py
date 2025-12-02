@@ -5,7 +5,7 @@ import math
 from net import send_json, recv_json
 import addpath
 
-HOST = "127.0.0.1"
+HOST = "140.113.66.15"
 PORT = 5000
 
 SCREEN_WIDTH = 800
