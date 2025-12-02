@@ -5,7 +5,7 @@ import math
 from net import send_json, recv_json
 import addpath
 
-HOST = "140.113.66.15"
+HOST = "172.20.10.3"
 PORT = 5000
 
 SCREEN_WIDTH = 800
@@ -331,16 +331,13 @@ class GameClient:
             self.screen.blit(img, (ff["x"], ff["y"]))
     
     def _draw_status(self):
-        status = self.latest_state["status"]
         y = 16
-        mario_text = self.font.render(f"Mario X {status['mario_lives']}", True, BLACK)
-        self.screen.blit(mario_text, (16, y))
-        y += self.font.get_linesize()
+        for p_name, p_status in self.latest_state["player_status"].items():
+            test = self.font.render(f"{p_name} X {p_status}", True, BLACK)
+            self.screen.blit(test, (16, y))
+            y += self.font.get_linesize()
 
-        luigi_text = self.font.render(f"Luigi X {status['luigi_lives']}", True, BLACK)
-        self.screen.blit(luigi_text, (16, y))
-
-        score_text = self.font.render(f"Score: {status['score']}", True, BLACK)
+        score_text = self.font.render(f"Score: {self.latest_state['score']}", True, BLACK)
         self.screen.blit(score_text, (650, 16))
 
 
