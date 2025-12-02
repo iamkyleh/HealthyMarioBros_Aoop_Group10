@@ -2,8 +2,6 @@ import socket
 import json
 import threading
 import time
-import sys
-import os
 import pygame
 
 # Add parent directory to path to import game_ver1 modules if needed
@@ -42,11 +40,6 @@ class Game:
             # Load platforms
             for p in data["Platforms"]:
                 platforms.append(pygame.Rect(p["x"], p["y"], p["w"], p["h"]))
-            
-            # Load pipes
-            if "Pipe" in data:
-                for p in data["Pipe"]:
-                    platforms.append(pygame.Rect(p["x"], p["y"], p["w"], p["h"]))
             
             # Load flags
             if "Flags" in data:
@@ -122,6 +115,14 @@ class Game:
                     else:
                         # Kill player
                         player.take_damage(from_faction=e.faction, respawn_point=self.respawn_point)
+            
+            # Player-to-player collisions
+            for p in self.players:
+                # Skip self-collision
+                if p == player or not p.is_alive:
+                    continue
+                # Use the player's collision handling method
+                player.handle_player_collision(p, self.respawn_point)
 
             # Flags
             for f in self.flags:
