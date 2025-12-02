@@ -271,89 +271,255 @@ class Game:
 
 class Server:
     def __init__(self):
-        self.clients = []
-        self.client_inputs = {}  # Maps client socket to input dict
-        self.playerNum = int(input("Enter number of players: "))
+        # Socket tracking
+        self.player_sockets = []
+        self.observer_sockets = []
+
+        # Player name / input mappings
+        self.player_inputs = {}  # Maps player name to latest input dict
+        self.player_names = {}   # Maps socket -> player-name
+        self.player_to_socket = {}  # Maps player-name -> socket
+
+        # Observer bookkeeping (for logging / cleanup)
+        self.observer_names = {}  # Maps observer socket -> label
+
         self.game = Game()
-        self.available_names = ["Mario", "Luigi", "Player3", "Player4"]
-        self.name_to_socket = {}  # Maps player name to socket
+        self.available_names = ["Mario", "Luigi"]
         self.running = True
+        self.game_started = False
         self.__init_network()
-        self.__start_game_loop()
+        # Start accepting players in background while waiting for 'start'
+        self.player_accept_thread = threading.Thread(target=self.__accept_players, daemon=True)
+        self.player_accept_thread.start()
+        
+        self.__wait_for_start()
+        if self.game_started:
+            self.__start_game_loop()
     
     def __init_network(self):
-        """Initialize network and accept clients"""
+        """Initialize network socket"""
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        # Enable TCP_NODELAY to reduce latency (disable Nagle's algorithm)
         self.server.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self.server.bind((HOST, PORT))
         self.server.listen()
         print(f"Server listening on {HOST}:{PORT}")
+    
+    def __accept_players(self):
+        """Accept players in main thread until start command"""
+        print("Waiting for players to connect...")
+        self.server.settimeout(1.0)  # Check for start command every second
+        player_count = 0
         
-        # Accept clients
-        for i in range(self.playerNum):
-            conn, addr = self.server.accept()
-            print(f"Client {i+1} connected from {addr}")
-            self.clients.append(conn)
-            
-            # Assign player name
-            if i < len(self.available_names):
-                player_name = self.available_names[i]
-                self.game.add_player(player_name)
-                self.name_to_socket[player_name] = conn
+        while not self.game_started and self.running:
+            try:
+                # Try to accept new client
+                conn, addr = self.server.accept()
+                print(f"Client connected from {addr}")
                 
                 # Set socket options for low latency
                 conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                conn.settimeout(None)  # Blocking mode for server
+                conn.settimeout(5.0)  # 5 second timeout for role assignment
                 
                 # Small delay to ensure connection is fully established
                 import time
                 time.sleep(0.05)  # 50ms delay
                 
-                # Send welcome message with player name and platform data
+                # Wait for client to send their role
                 try:
+                    role_msg = recv_json(conn, timeout=5.0)
+                    if not role_msg or "role" not in role_msg:
+                        print(f"Invalid role message from {addr}, disconnecting")
+                        conn.close()
+                        continue
+                    
+                    role_input = role_msg["role"]
+                    # Convert to single letter: "P" for player, "O" for observer
+                    if role_input == "P":
+                        pass
+                    elif role_input == "O":
+                        print(f"Observer detected, passing to observer handler...")
+                        self.__handle_observer_connection(conn, addr)
+                        continue
+                    else:
+                        print(f"Invalid role '{role_input}' from {addr}, disconnecting")
+                        conn.close()
+                        continue                        
+                    
+                    # Only process players here
+                    print(f"Player from {addr} registered")
+
+                    # Assign name and add to game
+                    if player_count < len(self.available_names):
+                        player_name = self.available_names[player_count]
+                        self.game.add_player(player_name)
+                        self.player_to_socket[player_name] = conn
+                        self.player_names[conn] = player_name
+                        self.player_sockets.append(conn)
+                        player_count += 1
+                        print(f"  Assigned name: {player_name}")
+                    else:
+                        print(f"  Maximum players reached, disconnecting")
+                        conn.close()
+                        continue
+                    
+                    # Send welcome message
                     welcome_msg = {
                         "welcome": "Welcome to HealthyMarioBros",
-                        "player_name": player_name,
-                        "platform": self.game.get_init_dict()["platform"]
+                        "role": role_input,
+                        "platform": self.game.get_init_dict()["platform"],
+                        "player_name": player_name
                     }
-                    print(f"Sending welcome message to {player_name}...")
+                    
                     send_json(conn, welcome_msg)
-                    print(f"Welcome message sent to {player_name}")
+                    print(f"Welcome message sent to player {player_name}")
+                    
+                    # Reset timeout for game loop
+                    conn.settimeout(None)
+                    
                 except Exception as e:
-                    print(f"Error sending welcome message to {player_name}: {e}")
-                    # Remove client if we can't send welcome
-                    self.clients.remove(conn)
-                    del self.name_to_socket[player_name]
-                    self.game.players = [p for p in self.game.players if p.name != player_name]
+                    print(f"Error processing player from {addr}: {e}")
                     conn.close()
-                    raise
+                    
+            except socket.timeout:
+                # Timeout is expected - check for start command
+                pass
+            except Exception as e:
+                print(f"Error accepting player: {e}")
         
-        print(f"All {self.playerNum} clients connected. Starting game...")
+        print(f"Game starting with {len(self.player_sockets)} players")
+        # Reset server socket timeout for accepting new clients
+        self.server.settimeout(None)
     
-    def __remove_client(self, sock, player_name):
+    def __handle_observer_connection(self, conn, addr):
+        """Handle observer connection in observer thread"""
+        def handle():
+            try:
+                self.observer_sockets.append(conn)
+                observer_label = f"observer_{len(self.observer_sockets)}"
+                self.observer_names[conn] = observer_label
+                conn.settimeout(None)
+                
+                # Send welcome message
+                welcome_msg = {
+                    "welcome": "Welcome to HealthyMarioBros",
+                    "role": "O",
+                    "platform": self.game.get_init_dict()["platform"]
+                }
+                send_json(conn, welcome_msg)
+                
+                # Start handler thread
+                thread = threading.Thread(
+                    target=self.__handle_client,
+                    args=(conn, observer_label, "O"),
+                    daemon=True
+                )
+                thread.start()
+                print(f"Observer {observer_label} connected and ready")
+            except Exception as e:
+                print(f"Error handling observer from {addr}: {e}")
+                if conn in self.observer_sockets:
+                    self.observer_sockets.remove(conn)
+                if conn in self.observer_names:
+                    del self.observer_names[conn]
+                conn.close()
+        
+        # Run in a separate thread
+        observer_thread = threading.Thread(target=handle, daemon=True)
+        observer_thread.start()
+    
+    def __accept_new_clients(self):
+        """Accept new clients as observers after game has started"""
+        while self.running:
+            try:
+                conn, addr = self.server.accept()
+                print(f"New client connected from {addr} (as observer)")
+                
+                # Set socket options
+                conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                conn.settimeout(5.0)
+                
+                import time
+                time.sleep(0.05)
+                
+                # Wait for role message
+                role_msg = recv_json(conn, timeout=5.0)
+                role_input = role_msg.get("role", "").upper() if role_msg else ""
+                if role_msg and (role_input == "O" or role_input == "OBSERVER"):
+                    self.__handle_observer_connection(conn, addr)
+                else:
+                    print(f"Invalid role from {addr}, disconnecting")
+                    conn.close()
+            except socket.timeout:
+                continue
+            except Exception as e:
+                if self.running:
+                    print(f"Error accepting new client: {e}")
+                break
+    
+    def __wait_for_start(self):
+        """Wait for 'start' command from user input"""
+        print("\n" + "="*50)
+        print("Waiting for 'start' command to begin the game...")
+        print("Type 'start' and press Enter to begin")
+        print("="*50)
+        while not self.game_started:
+            try:
+                command = input().strip().lower()
+                if command == "start":
+                    self.game_started = True
+                    print("Game starting!")
+                    break
+                elif command == "status":
+                    players = len(self.player_sockets)
+                    observers = len(self.observer_sockets)
+                    print(f"Current status: {players} players, {observers} observers")
+                else:
+                    print(f"Unknown command: '{command}'. Type 'start' to begin or 'status' to check connections.")
+            except (EOFError, KeyboardInterrupt):
+                print("\nShutting down server...")
+                self.running = False
+                break
+    
+    def __remove_client(self, sock, player_name=None):
         """Remove a disconnected client from all lists"""
         try:
-            if sock in self.clients:
-                self.clients.remove(sock)
-            if player_name in self.name_to_socket:
-                del self.name_to_socket[player_name]
-            if player_name in self.client_inputs:
-                del self.client_inputs[player_name]
-            # Remove player from game
-            self.game.players = [p for p in self.game.players if p.name != player_name]
-            print(f"Client {player_name} disconnected and removed")
+            if sock in self.player_sockets:
+                self.player_sockets.remove(sock)
+            if sock in self.observer_sockets:
+                self.observer_sockets.remove(sock)
+            
+            # Determine player name if not provided
+            if player_name is None:
+                player_name = self.player_names.get(sock)
+            
+            if player_name:
+                # Clean up player bookkeeping
+                if player_name in self.player_to_socket:
+                    del self.player_to_socket[player_name]
+                if player_name in self.player_inputs:
+                    del self.player_inputs[player_name]
+                self.game.players = [p for p in self.game.players if p.name != player_name]
+                if sock in self.player_names:
+                    del self.player_names[sock]
+                print(f"Player {player_name} disconnected and removed")
+            else:
+                # Observer cleanup
+                observer_label = self.observer_names.get(sock, "observer")
+                if sock in self.observer_names:
+                    del self.observer_names[sock]
+                print(f"Observer {observer_label} disconnected and removed")
+            
             sock.close()
         except Exception as e:
-            print(f"Error removing client {player_name}: {e}")
+            print(f"Error removing client: {e}")
     
-    def __handle_client(self, sock, player_name):
-        """Handle input from a single client"""
+    def __handle_client(self, sock, client_name, role):
+        """Handle input from a single client (player or observer)"""
         # Set socket to non-blocking with timeout for this thread
         sock.settimeout(1.0)  # 1 second timeout - allows client to send at its own pace
         
-        while self.running:
+        while self.running and self.game_started:
             try:
                 # Use a longer timeout for server-side receiving
                 data = recv_json(sock, timeout=1.0)
@@ -361,39 +527,59 @@ class Server:
                     # Timeout - no data received, but connection might still be alive
                     # This is normal when client isn't sending input
                     continue
-                if data:
+                if data and role == "P":
+                    # Only process input from players
                     # Store input for this player (data should be {"move": int, "jump": bool, "attack": bool})
-                    self.client_inputs[player_name] = data
+                    self.player_inputs[client_name] = data
+                # Observers don't send input, so we ignore their messages
             except (socket.error, OSError, ConnectionError, BrokenPipeError) as e:
                 # Connection error - remove client
                 err_code = getattr(e, 'winerror', getattr(e, 'errno', None))
                 if err_code in (10053, 10054, 10057, 10058):  # Connection aborted/closed errors
-                    print(f"Connection closed by {player_name}: {e}")
+                    print(f"Connection closed by {client_name}: {e}")
                 else:
-                    print(f"Error receiving from {player_name}: {e}")
-                self.__remove_client(sock, player_name)
+                    print(f"Error receiving from {client_name}: {e}")
+                self.__remove_client(sock, client_name if role == "P" else None)
                 break
             except Exception as e:
                 # Other errors - log but don't necessarily disconnect
-                print(f"Unexpected error from {player_name}: {e}")
+                print(f"Unexpected error from {client_name}: {e}")
                 # Continue running unless it's a critical error
     
     def __start_game_loop(self):
         """Start game update loop and client handlers"""
-        # Start client handler threads
-        for player_name, sock in self.name_to_socket.items():
-            thread = threading.Thread(target=self.__handle_client, args=(sock, player_name), daemon=True)
+        # Start client handler threads for all currently connected clients
+        for sock in list(self.player_sockets):
+            player_name = self.player_names.get(sock, f"player_{id(sock)}")
+            thread = threading.Thread(
+                target=self.__handle_client,
+                args=(sock, player_name, "P"),
+                daemon=True
+            )
             thread.start()
+
+        for sock in list(self.observer_sockets):
+            observer_label = self.observer_names.get(sock, f"observer_{id(sock)}")
+            thread = threading.Thread(
+                target=self.__handle_client,
+                args=(sock, observer_label, "O"),
+                daemon=True
+            )
+            thread.start()
+        
+        # Start a thread to accept new clients (as observers) even after game starts
+        accept_thread = threading.Thread(target=self.__accept_new_clients, daemon=True)
+        accept_thread.start()
         
         # Game loop
         clock = time.time()
         while self.running:
             # Collect inputs
             player_inputs = {}
-            for player_name, sock in self.name_to_socket.items():
-                if player_name in self.client_inputs:
+            for player_name, sock in self.player_to_socket.items():
+                if player_name in self.player_inputs:
                     # Client may send {"mario": {...}} or just {...}
-                    inp = self.client_inputs[player_name]
+                    inp = self.player_inputs[player_name]
                     if isinstance(inp, dict) and player_name.lower() in inp:
                         # Extract from nested format
                         player_inputs[player_name] = inp[player_name.lower()]
@@ -404,22 +590,21 @@ class Server:
             # Update game
             self.game.update(player_inputs)
             
-            # Send state to all clients
+            # Send state to all clients (players and observers)
             state = self.game.get_state_dict()
             disconnected_clients = []
-            for sock in self.clients:
+            for sock in self.player_sockets + self.observer_sockets:
                 try:
                     send_json(sock, state)
                 except Exception as e:
                     print(f"Error sending to client: {e}")
-                    # Find which player this socket belongs to
-                    player_name = None
-                    for name, s in self.name_to_socket.items():
-                        if s == sock:
-                            player_name = name
-                            break
-                    if player_name:
-                        disconnected_clients.append((sock, player_name))
+                    # Find which client this socket belongs to
+                    client_name = self.player_names.get(sock) or self.observer_names.get(sock)
+                    if client_name:
+                        disconnected_clients.append((sock, client_name if sock in self.player_sockets else None))
+                    else:
+                        # Observer or unknown client
+                        disconnected_clients.append((sock, None))
             
             # Remove disconnected clients
             for sock, player_name in disconnected_clients:
@@ -435,7 +620,7 @@ class Server:
     def shutdown(self):
         """Shutdown server"""
         self.running = False
-        for sock in self.clients:
+        for sock in self.player_sockets + self.observer_sockets:
             try:
                 sock.close()
             except:

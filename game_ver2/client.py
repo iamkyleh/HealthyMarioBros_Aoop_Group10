@@ -53,6 +53,7 @@ class GameClient:
         self.s = None
         self.client_id = None
         self.name = None
+        self.role = None  # "P" for player or "O" for observer
 
         # Load images
         self._load_img()
@@ -61,15 +62,29 @@ class GameClient:
 
     # -------------------- Networking ------------------------
     def _init_networking(self):
+        # Ask user for role FIRST, before connecting
+        while True:
+            role_input = input("Enter your role [P (player) / O (observer)]: ").strip().upper()
+            if role_input in ["P", "O"]:
+                self.role = role_input
+                break
+            print("Invalid role. Please enter 'P' for player or 'O' for observer.")
+        
         try:
             self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             # Enable TCP_NODELAY for low latency
             self.s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             # For initial connection, use a longer timeout to ensure welcome message is received
             self.s.settimeout(10.0)  # 10 second timeout for initial connection
-            print(f"Connecting to {HOST}:{PORT}...")
+            
+            # Connect to server (same port for both players and observers)
+            print(f"Connecting to server on {HOST}:{PORT}...")
             self.s.connect((HOST, PORT))
-            print("Connected! Waiting for welcome message...")
+            print("Connected! Sending role...")
+            
+            # Send role to server immediately after connecting
+            send_json(self.s, {"role": self.role})
+            print(f"Role '{self.role}' sent to server. Waiting for welcome message...")
 
             # Welcome packet with platform data - wait with longer timeout
             # Try multiple times in case of timing issues
@@ -87,7 +102,10 @@ class GameClient:
                     self.platforms = msg["platform"]
                 if "player_name" in msg:
                     self.name = msg["player_name"]
-                print(f"Connected as {self.name}")
+                if "role" in msg:
+                    self.role = msg["role"]
+                role_name = "player" if self.role == "P" else "observer"
+                print(f"Connected as {role_name}" + (f" ({self.name})" if self.name else ""))
             else:
                 print(f"Failed to receive welcome message. Received: {msg}")
                 if msg:
@@ -124,6 +142,10 @@ class GameClient:
 
     # --------------------- Input Send -----------------------
     def _send_input(self):
+        # Only send input if this client is a player
+        if self.role != "P":
+            return
+            
         # Check if socket is still valid
         if self.s is None or not self.running:
             return
