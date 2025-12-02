@@ -227,20 +227,14 @@ class Game:
             }
         
         # Build status
-        mario_lives = 0
-        luigi_lives = 0
-        for player in self.players:
-            if player.name == "Mario":
-                mario_lives = player.lives
-            elif player.name == "Luigi":
-                luigi_lives = player.lives
+        player_lives_data = {}
+        for p in self.players:
+            player_lives_data[f"{p.name}"] = p.lives
         
         return {
-            "status": {
-                "mario_lives": mario_lives,
-                "luigi_lives": luigi_lives,
-                "score": self.score
-            },
+            "status": 1,
+            "player_lives": player_lives_data,
+            "score": self.score,
             "entity": entities,
             "prop": {
                 "coin": coins_data,
