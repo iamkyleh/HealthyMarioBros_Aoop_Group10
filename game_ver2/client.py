@@ -22,6 +22,7 @@ img_dic = {
     "Pipe": (60, 60),
     "Coin": (20, 28),
     "Goomba": (32, 32),
+    "KoopaTroopa": (32, 46),
     "Mario": (24, 32),
     "Luigi": (24, 32),
     "MushroomRetainer": (24, 32),
@@ -289,11 +290,7 @@ class GameClient:
         ent = self.latest_state["entity"]
         for name, parameters in ent.items():
             # Handle goombas with indexed names
-            if name.startswith("Goomba_"):
-                name = "Goomba"
-            else:
-                pass
-            
+            name = name.split("_")[0]
             img = self.image.get(name)
             if img:
                 if parameters["dir"] == -1:
