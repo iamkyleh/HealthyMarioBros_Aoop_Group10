@@ -178,7 +178,7 @@ class Game:
         entities = {}
         for player in self.players:
             if player.is_alive:
-                entities[player.name.lower()] = {
+                entities[player.name] = {
                     "x": int(player.x - self.camera_x),
                     "y": int(player.y),
                     "dir": player.direction
@@ -198,7 +198,7 @@ class Game:
         
         # Add goombas to entities (using indexed keys to handle multiple)
         for i, goomba in enumerate(goomba_list):
-            entities[f"goomba_{i}"] = goomba
+            entities[f"Goomba_{i}"] = goomba
         
         # Build prop data
         coins_data = []
@@ -278,7 +278,7 @@ class Server:
         self.observer_names = {}  # Maps observer socket -> label
 
         self.game = Game()
-        self.available_names = ["Mario", "Luigi"]
+        self.available_names = [ "Mario", "Luigi", "MushroomRetainer"]
         self.running = True
         self.game_started = False
         self.__init_network()
@@ -574,9 +574,9 @@ class Server:
                 if player_name in self.player_inputs:
                     # Client may send {"mario": {...}} or just {...}
                     inp = self.player_inputs[player_name]
-                    if isinstance(inp, dict) and player_name.lower() in inp:
+                    if isinstance(inp, dict) and player_name in inp:
                         # Extract from nested format
-                        player_inputs[player_name] = inp[player_name.lower()]
+                        player_inputs[player_name] = inp[player_name]
                     elif isinstance(inp, dict) and "move" in inp:
                         # Direct format
                         player_inputs[player_name] = inp
