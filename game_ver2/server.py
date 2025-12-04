@@ -62,7 +62,6 @@ class Game:
                 cls = enemy_classes[e["type"]]
                 enemy = cls(e["x"], e["y"])
                 self.enemies.append(enemy)
-
     
     def add_player(self, name):
         """Add a new player to the game"""
@@ -189,7 +188,7 @@ class Game:
         # Or we can send as a list in a different structure. Let's use indexed keys for now.
         for i, enemy in enumerate(self.enemies):
             if enemy.is_alive:
-                entities[f"{enemy.__class__.__name__}_{i}"] = {
+                entities[f"{enemy.name}_{i}"] = {
                     "x": int(enemy.x - self.camera_x),
                     "y": int(enemy.y),
                     "dir": enemy.direction
@@ -273,7 +272,7 @@ class Server:
         self.observer_names = {}  # Maps observer socket -> label
 
         self.game = Game()
-        self.available_names = [ "Mario", "Luigi", "MushroomRetainer"]
+        self.available_names = ["MushroomRetainer", "Mario", "Luigi"]
         self.running = True
         self.game_started = False
         self.__init_network()
