@@ -7,6 +7,7 @@ class Enemy(Entity):
         self.faction = 'E'
         self.vel_x: float = -1
         self._points: int = points
+        self.edgeturn = True
     
     @property
     def points(self) -> int:
@@ -27,7 +28,7 @@ class Enemy(Entity):
                 self.x -= self.vel_x
                 self.vel_x *= -1
         # edge turn
-        if self.on_ground and not self._ground_ahead(platforms):
+        if self.edgeturn and self.on_ground and not self._ground_ahead(platforms):
             self.vel_x *= -1
 
 class Goomba(Enemy):
@@ -53,3 +54,20 @@ class KoopaTroopa(Enemy):
         self.wander_horizonal(platforms)
         self.move_and_collide_vertical(platforms)
         self.direction = 1 if self.vel_x>0 else -1
+
+    def take_damage(self, from_faction) -> bool:
+        if not self.is_alive:
+            return False
+        if self.name == "KoopaTroopa":
+            self.name = "KoopaTroopaShell"
+            print(self.name)
+            self.edgeturn = False
+            self.width = 32
+            self.height = 28
+            self.vel_x *= 5
+            self.x += 10
+            return True
+        elif self.name == "KoopaTroopaShell" and from_faction != self.faction:
+            self.vel_x += 5
+            return True
+        return False

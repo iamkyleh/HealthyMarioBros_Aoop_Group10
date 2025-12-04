@@ -23,6 +23,7 @@ img_dic = {
     "Coin": (20, 28),
     "Goomba": (32, 32),
     "KoopaTroopa": (32, 46),
+    "KoopaTroopaShell": (32, 28),
     "Mario": (24, 32),
     "Luigi": (24, 32),
     "MushroomRetainer": (24, 32),
