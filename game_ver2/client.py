@@ -17,6 +17,26 @@ WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 RED   = (220, 50, 50)
 
+img_dic = {
+    "Brick": (32, 32),
+    "Pipe": (60, 60),
+    "Coin": (20, 28),
+    "Goomba": (32, 32),
+    "KoopaTroopa": (32, 46),
+    "KoopaTroopaShell": (32, 28),
+    "Mario": (24, 32),
+    "Luigi": (24, 32),
+    "MushroomRetainer": (24, 32),
+    "Flag": (48, 144),
+    "Flag_Mario": (48, 144),
+    "Flag_Luigi": (48, 144),
+    "Flag_MushroomRetainer": (48, 144),
+    "Flag_final": (48, 256),
+    "Flag_final_Mario": (48, 256),
+    "Flag_final_Luigi": (48, 256),
+    "Flag_final_MushroomRetainer": (48, 256)
+}
+
 def load_image(name, size=None):
     """Load an image by name (e.g., 'Brick.png'); optionally scale to size=(w,h)."""
     try:
@@ -167,7 +187,7 @@ class GameClient:
                 # Format according to format.txt: {"mario": {...}, "luigi": {...}}
                 # Send input with player name as key
                 if self.name:
-                    send_json(self.s, {self.name.lower(): current_input})
+                    send_json(self.s, {self.name: current_input})
                 else:
                     # Fallback if name not received
                     send_json(self.s, current_input)
@@ -223,18 +243,8 @@ class GameClient:
 
     def _load_img(self):
         self.image = {}
-        self.image["Brick"] = load_image("Brick.png", (32, 32))
-        self.image["Pipe"] = load_image("Pipe.png", (60, 60))
-        self.image["Coin"] = load_image("Coin.png", (20, 28))
-        self.image["Goomba"] = load_image("Goomba.png", (32, 32))
-        self.image["Mario"] = load_image("Mario.png", (24, 32))
-        self.image["Luigi"] = load_image("Luigi.png", (24, 32))
-        self.image["Flag"] = load_image("Flag.png", (48, 144))
-        self.image["Flag_Mario"] = load_image("Flag_Mario.png", (48, 144))
-        self.image["Flag_Luigi"] = load_image("Flag_Luigi.png", (48, 144))
-        self.image["Flag_final"] = load_image("Flag_final.png", (48, 256))
-        self.image["Flag_final_Mario"] = load_image("Flag_final_Mario.png", (48, 256))
-        self.image["Flag_final_Luigi"] = load_image("Flag_final_Luigi.png", (48, 256))
+        for name, s in img_dic.items():
+            self.image[name] = load_image(f"{name}.png", s)
         missing = False
         for name, img in self.image.items():
             if not img:
@@ -283,11 +293,7 @@ class GameClient:
         ent = self.latest_state["entity"]
         for name, parameters in ent.items():
             # Handle goombas with indexed names
-            if name.startswith("goomba_"):
-                name = "Goomba"
-            else:
-                name = name.capitalize()
-            
+            name = name.split("_")[0]
             img = self.image.get(name)
             if img:
                 if parameters["dir"] == -1:
@@ -331,16 +337,13 @@ class GameClient:
             self.screen.blit(img, (ff["x"], ff["y"]))
     
     def _draw_status(self):
-        status = self.latest_state["status"]
         y = 16
-        mario_text = self.font.render(f"Mario X {status['mario_lives']}", True, BLACK)
-        self.screen.blit(mario_text, (16, y))
-        y += self.font.get_linesize()
+        for p_name, p_status in self.latest_state["player_lives"].items():
+            test = self.font.render(f"{p_name} X {p_status}", True, BLACK)
+            self.screen.blit(test, (16, y))
+            y += self.font.get_linesize()
 
-        luigi_text = self.font.render(f"Luigi X {status['luigi_lives']}", True, BLACK)
-        self.screen.blit(luigi_text, (16, y))
-
-        score_text = self.font.render(f"Score: {status['score']}", True, BLACK)
+        score_text = self.font.render(f"Score: {self.latest_state['score']}", True, BLACK)
         self.screen.blit(score_text, (650, 16))
 
 
