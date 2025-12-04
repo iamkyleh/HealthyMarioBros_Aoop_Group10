@@ -29,9 +29,11 @@ img_dic = {
     "Flag": (48, 144),
     "Flag_Mario": (48, 144),
     "Flag_Luigi": (48, 144),
+    "Flag_MushroomRetainer": (48, 144),
     "Flag_final": (48, 256),
     "Flag_final_Mario": (48, 256),
-    "Flag_final_Luigi": (48, 256)
+    "Flag_final_Luigi": (48, 256),
+    "Flag_final_MushroomRetainer": (48, 256)
 }
 
 def load_image(name, size=None):
