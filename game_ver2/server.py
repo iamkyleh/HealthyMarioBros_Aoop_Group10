@@ -101,7 +101,7 @@ class Game:
                     c.collected = True
                     self.score += 100
             
-            # Goombas
+            # enemies
             for e in self.enemies:
                 if not e.is_alive:
                     continue
@@ -111,7 +111,7 @@ class Game:
                         if e.take_damage(from_faction=player.faction):
                             self.score += e.points
                         player.vel_y = -8
-                    else:
+                    elif e.canDealDamage:
                         # Kill player
                         player.take_damage(from_faction=e.faction, respawn_point=self.respawn_point)
             
@@ -178,8 +178,8 @@ class Game:
         for player in self.players:
             if player.is_alive:
                 entities[player.name] = {
-                    "x": int(player.x - self.camera_x),
-                    "y": int(player.y),
+                    "x": float(player.x - self.camera_x),
+                    "y": float(player.y),
                     "dir": player.direction
                 }
         
@@ -189,8 +189,8 @@ class Game:
         for i, enemy in enumerate(self.enemies):
             if enemy.is_alive:
                 entities[f"{enemy.name}_{i}"] = {
-                    "x": int(enemy.x - self.camera_x),
-                    "y": int(enemy.y),
+                    "x": float(enemy.x - self.camera_x),
+                    "y": float(enemy.y),
                     "dir": enemy.direction
                 }
         
@@ -199,24 +199,24 @@ class Game:
         for c in self.coins:
             if not c.collected:
                 coins_data.append({
-                    "x": int(c.x - self.camera_x),
-                    "y": int(c.y),
+                    "x": float(c.x - self.camera_x),
+                    "y": float(c.y),
                     "rotate": c.rotation
                 })
         
         flags_data = []
         for f in self.flags:
             flags_data.append({
-                "x": int(f.x - self.camera_x),
-                "y": int(f.y),
+                "x": float(f.x - self.camera_x),
+                "y": float(f.y),
                 "name": f.touched_by if f.touched_by else ""
             })
         
         flag_final_data = None
         if self.flag_final:
             flag_final_data = {
-                "x": int(self.flag_final.x - self.camera_x),
-                "y": int(self.flag_final.y),
+                "x": float(self.flag_final.x - self.camera_x),
+                "y": float(self.flag_final.y),
                 "name": self.flag_final.touched_by if self.flag_final.touched_by else ""
             }
         
