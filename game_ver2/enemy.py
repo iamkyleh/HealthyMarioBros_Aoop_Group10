@@ -55,7 +55,7 @@ class KoopaTroopa(Enemy):
         self.move_and_collide_vertical(platforms)
         self.direction = 1 if self.vel_x>0 else -1
 
-    def take_damage(self, from_faction) -> bool:
+    def take_damage(self, his_status) -> bool:
         if not self.is_alive:
             return False
         if self.name == "KoopaTroopa":
@@ -66,7 +66,7 @@ class KoopaTroopa(Enemy):
             self.vel_x *= 5
             self.x += 10
             return True
-        elif self.name == "KoopaTroopaShell" and from_faction != self.faction:
+        elif self.name == "KoopaTroopaShell" and his_status.faction != self.faction:
             self.vel_x += 5
             return True
         return False

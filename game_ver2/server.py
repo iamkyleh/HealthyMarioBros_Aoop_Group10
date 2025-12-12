@@ -108,12 +108,12 @@ class Game:
                 if mrect.colliderect(e.rect):
                     if player.vel_y > 0 and (mrect.bottom - e.rect.top) < 20:
                         # Kill enemy
-                        if e.take_damage(from_faction=player.faction):
+                        if e.take_damage(his_status=player.status):
                             self.score += e.points
                         player.vel_y = -8
                     else:
                         # Kill player
-                        player.take_damage(from_faction=e.faction, respawn_point=self.respawn_point)
+                        player.take_damage(his_status=e.status, respawn_point=self.respawn_point)
             
             # Player-to-player collisions
             for p in self.players:
