@@ -1,4 +1,3 @@
-from numpy.random import random_integers
 from entity import Entity
 import pygame
 
@@ -13,10 +12,6 @@ class Enemy(Entity):
     @property
     def points(self) -> int:
         return self._points
-    
-    @property
-    def canDealDamage(self) -> bool:
-        return True
     
     def _ground_ahead(self, platforms, step=6):
         """Return True if there's ground under the leading edge after a small step."""
@@ -68,21 +63,10 @@ class KoopaTroopa(Enemy):
             self.edgeturn = False
             self.width = 32
             self.height = 28
-            self._points = 0
-            self.vel_x = 0
+            self.vel_x *= 5
             self.x += 10
             return True
         elif self.name == "KoopaTroopaShell" and from_faction != self.faction:
-            if self.vel_x == 0:
-                self.vel_x = 5
-            else:
-                self.vel_x = 0
+            self.vel_x += 5
             return True
         return False
-    
-    @property
-    def canDealDamage(self) -> bool:
-        if self.name == "KoopaTroopa":
-            return True
-        if self.name == "KoopaTroopaShell":
-            return self.vel_x

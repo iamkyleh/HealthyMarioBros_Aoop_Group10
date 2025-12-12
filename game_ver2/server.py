@@ -101,7 +101,7 @@ class Game:
                     c.collected = True
                     self.score += 100
             
-            # enemies
+            # Goombas
             for e in self.enemies:
                 if not e.is_alive:
                     continue
@@ -111,7 +111,7 @@ class Game:
                         if e.take_damage(from_faction=player.faction):
                             self.score += e.points
                         player.vel_y = -8
-                    elif e.canDealDamage:
+                    else:
                         # Kill player
                         player.take_damage(from_faction=e.faction, respawn_point=self.respawn_point)
             
