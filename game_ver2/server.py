@@ -19,6 +19,10 @@ PORT = 5000
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
 
+START_TIME = time.time()*1000
+def now():
+    return time.time()*1000
+
 enemy_classes = {
     "Goomba": Goomba,
     "KoopaTroopa": KoopaTroopa,
@@ -211,6 +215,13 @@ class Game:
                 "y": float(f.y),
                 "name": f.touched_by if f.touched_by else ""
             })
+
+        # debug only
+        x_val = flags_data[0]["x"]
+        with open("flag_log_server.txt", "a") as log_file:
+            log_file.write(f"{now()} {x_val}\n")
+
+        
         
         flag_final_data = None
         if self.flag_final:

@@ -4,6 +4,7 @@ import pygame
 import math
 from net import send_json, recv_json
 import addpath
+import time
 
 HOST = "140.113.66.15"
 PORT = 5000
@@ -16,6 +17,10 @@ SKY_BLUE = (92, 148, 252)
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 RED   = (220, 50, 50)
+
+START_TIME = time.time()*1000
+def now():
+    return time.time()*1000
 
 img_dic = {
     "Brick": (32, 32),
@@ -324,6 +329,9 @@ class GameClient:
                 img_name = "Flag"
             img = self.image.get(img_name, self.image["Flag"])
             self.screen.blit(img, (f["x"], f["y"]))
+            # debug only
+            with open("flag_log_client.txt", "a") as log_file:
+                log_file.write(f"{now()} {f["x"]}\n")
         
         # Draw final flag
         if props.get("flag_final"):
