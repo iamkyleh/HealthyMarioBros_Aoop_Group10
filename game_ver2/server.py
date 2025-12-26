@@ -131,9 +131,11 @@ class Game:
                         if e.take_damage(his_status=player.status):
                             self.score += e.points
                         player.vel_y = -8
+                        player.y -= 5
                     else:
                         # Kill player
-                        player.take_damage(his_status=e.status, respawn_point=self.respawn_point)
+                        if e.can_deal_damage:
+                            player.take_damage(his_status=e.status, respawn_point=self.respawn_point)
             
             # Player-to-player collisions
             for p in self.players:
