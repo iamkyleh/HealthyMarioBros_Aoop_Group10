@@ -7,9 +7,9 @@ import cv2
 from net import send_json, recv_json
 import addpath
 import time
-from jump_detector import JumpDetector
-from pose_camera import PoseCamera
-from hand_detector import HandDetector
+from detection.jump_detector import JumpDetector
+from detection.pose_camera import PoseCamera
+from detection.hand_detector import HandDetector
 
 HOST = "192.168.0.128"
 PORT = 5000
