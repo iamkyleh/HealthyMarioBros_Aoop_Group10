@@ -184,6 +184,7 @@ class GameClient:
             self.running = False
             return
         
+        # Initialize jump detection (only for players)
         if self.role == "P":
             self.pose_jump_detected = False
             if _camera_available:
