@@ -6,6 +6,10 @@ import time
 import threading
 from net import send_json, recv_json
 import addpath
+import time
+from detection.jump_detector import JumpDetector
+from detection.pose_camera import PoseCamera
+from detection.hand_detector import HandDetector
 
 try:
     import cv2
@@ -193,18 +197,15 @@ class GameClient:
         
         # Initialize jump detection (only for players)
         if self.role == "P":
+            self.jump_detector = JumpDetector()
+            self.hand_detector = HandDetector()
+            self.pose_camera = PoseCamera()
             self.pose_jump_detected = False
-            if _camera_available:
-                self.jump_detector = JumpDetector()
-                self.pose_camera = PoseCamera()
-                
-                # Start camera thread for jump detection
-                self.camera_thread = threading.Thread(target=self._camera_loop, daemon=True)
-                self.camera_thread.start()
-            else:
-                # Ensure attributes exist even without camera support
-                self.jump_detector = JumpDetector()
-                self.pose_camera = PoseCamera()
+            self.pose_move = 0  # -1 left, 0 none, 1 right
+            
+            # Start camera thread for jump detection
+            self.camera_thread = threading.Thread(target=self._camera_loop, daemon=True)
+            self.camera_thread.start()
 
         
         # Now switch to non-blocking mode for game loop
@@ -215,13 +216,22 @@ class GameClient:
         if not _camera_available:
             return
         while self.running:
-            frame, hip_y = self.pose_camera.get_frame_and_y()
+            frame, hip_y, pose_landmarks = self.pose_camera.get_frame_and_y()
             if frame is None:
                 break
             
             # Check for jump detection
             if self.jump_detector.update(hip_y):
                 self.pose_jump_detected = True
+            
+            # Check for hand detection
+            hand_move = self.hand_detector.update(pose_landmarks, self.pose_camera.mp_pose)
+            if hand_move == "right":
+                self.pose_move = 1
+            elif hand_move == "left":
+                self.pose_move = -1
+            else:
+                self.pose_move = 0
             
             # Display camera feed
             cv2.imshow("Pose Detection", frame)
@@ -322,6 +332,10 @@ class GameClient:
             move = -1
         elif keys[pygame.K_RIGHT] or keys[pygame.K_d]:
             move = 1
+        
+        # Override with pose move if detected
+        if self.pose_move != 0:
+            move = self.pose_move
         
         jump = bool(keys[pygame.K_UP] or keys[pygame.K_w] or self.pose_jump_detected)
         

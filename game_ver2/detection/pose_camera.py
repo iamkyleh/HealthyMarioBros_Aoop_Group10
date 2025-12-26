@@ -16,16 +16,18 @@ class PoseCamera:
     def get_frame_and_y(self):
         ret, frame = self.cap.read()
         if not ret:
-            return None, None
+            return None, None, None
 
         image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         result = self.pose.process(image_rgb)
 
         hip_y = None
+        pose_landmarks = None
         if result.pose_landmarks:
             hip_y = result.pose_landmarks.landmark[
                 self.mp_pose.PoseLandmark.LEFT_HIP.value
             ].y
+            pose_landmarks = result.pose_landmarks
 
             self.mp_draw.draw_landmarks(
                 frame,
@@ -33,7 +35,7 @@ class PoseCamera:
                 self.mp_pose.POSE_CONNECTIONS
             )
 
-        return frame, hip_y
+        return frame, hip_y, pose_landmarks
 
     def release(self):
         self.cap.release()
