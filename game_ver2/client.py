@@ -61,7 +61,10 @@ img_dic = {
     "Flag_final": (48, 256),
     "Flag_final_Mario": (48, 256),
     "Flag_final_Luigi": (48, 256),
-    "Flag_final_MushroomRetainer": (48, 256)
+    "Flag_final_MushroomRetainer": (48, 256),
+    "Fireball": (8, 8),
+    # FireFlower power-up image (used when player has fire ability)
+    "FireFlower": (24, 24)
 }
 
 def load_image(name, size=None):
@@ -110,6 +113,10 @@ class GameClient:
         self.selected_world_index = 0
         self.world_selection_confirmed = False
         self.world_selection_animation_time = 0
+        self.pvp_mode = False
+        
+        # PVP mode camera (individual per player)
+        self.pvp_camera_x = 0
 
         # Load images
         self._load_img()
@@ -259,6 +266,9 @@ class GameClient:
                 elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
                     # Move down (next world)
                     self._send_world_selection_move(1)
+                elif event.key == pygame.K_v:
+                    # Toggle PVP mode
+                    self._toggle_pvp_mode()
                 elif event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
                     # Confirm world selection
                     self._confirm_world_selection()
@@ -277,6 +287,15 @@ class GameClient:
         """Send world selection input to server (called every frame, but only sends on key events)"""
         # Input is handled in _handle_events via KEYDOWN events
         pass
+    
+    def _toggle_pvp_mode(self):
+        """Toggle PVP mode"""
+        if self.s is None or not self.running:
+            return
+        try:
+            send_json(self.s, {"world_selection": {"toggle_pvp": True}})
+        except Exception as e:
+            print(f"Error toggling PVP mode: {e}")
     
     def _confirm_world_selection(self):
         """Confirm world selection"""
@@ -354,6 +373,7 @@ class GameClient:
                     self.available_worlds = ws.get("available_worlds", [])
                     self.selected_world_index = ws.get("selected_index", 0)
                     self.world_selection_confirmed = ws.get("confirmed", False)
+                    self.pvp_mode = ws.get("pvp_mode", False)
                     if self.world_selection_confirmed:
                         self.world_selection_mode = False
                         # Update platforms if provided
@@ -477,6 +497,16 @@ class GameClient:
             text_rect = no_worlds_text.get_rect(center=(center_x, center_y))
             self.screen.blit(no_worlds_text, text_rect)
         
+        # Draw PVP mode status
+        pvp_text = self.font.render(f"PVP Mode: {'ON' if self.pvp_mode else 'OFF'} (Press V to toggle)", True, WHITE)
+        pvp_rect = pvp_text.get_rect(center=(center_x, SCREEN_HEIGHT - 100))
+        self.screen.blit(pvp_text, pvp_rect)
+        
+        # Draw PVP mode status
+        pvp_text = self.font.render(f"PVP Mode: {'ON' if self.pvp_mode else 'OFF'} (Press V to toggle)", True, WHITE)
+        pvp_rect = pvp_text.get_rect(center=(center_x, SCREEN_HEIGHT - 100))
+        self.screen.blit(pvp_text, pvp_rect)
+        
         # Draw instructions
         if self.role == "P":
             instruction_text = self.font.render("Use UP/DOWN arrows to navigate, ENTER to confirm", True, WHITE)
@@ -502,8 +532,14 @@ class GameClient:
         
         # check if we have a latest state
         if self.latest_state:
-            # Update camera from state
-            self.camera_x = self.latest_state.get("camera_x", 0)
+            # Update camera from state (handle PVP mode)
+            if self.latest_state.get("pvp_mode", False) and self.name:
+                # PVP mode: use individual camera for this player
+                player_cameras = self.latest_state.get("player_cameras", {})
+                self.camera_x = player_cameras.get(self.name, 0)
+            else:
+                # Co-op mode: use shared camera
+                self.camera_x = self.latest_state.get("camera_x", 0)
             self._draw_entities()
             self._draw_props()
             self._draw_status()

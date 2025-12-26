@@ -13,6 +13,7 @@ from net import send_json, recv_json
 from player import *
 from enemy import *
 from props import *
+from weapon import FireFlower, FireballProjectile
 import addpath
 
 HOST = '0.0.0.0'
@@ -31,7 +32,7 @@ enemy_classes = {
 }
 
 class Game:
-    def __init__(self, filename="world1"):
+    def __init__(self, filename="world1", pvp_mode=False):
         self.respawn_point = (80, 400)
         self.filename = filename
         self.platforms, self.flags, self.flag_final, self.coins, self.enemies = [], [], None, [], []
@@ -40,6 +41,8 @@ class Game:
         self.score = 0
         self.won = False
         self.camera_x = 0
+        self.pvp_mode = pvp_mode
+        self.fireballs = []  # Store all active fireballs
     
     def reload_level(self, filename):
         """Reload level with new filename"""
@@ -83,9 +86,17 @@ class Game:
                 enemy = cls(e["x"], e["y"])
                 self.enemies.append(enemy)
     
-    def add_player(self, name):
+    def add_player(self, name, pvp_mode=False):
         """Add a new player to the game"""
         player = Player(name, self.respawn_point)
+        # Set faction based on PVP mode
+        if pvp_mode:
+            # Assign unique faction for each player in PVP mode
+            player.faction = f"p{len(self.players) + 1}"
+        else:
+            player.faction = 'P'  # All players same faction in co-op
+        # Give player a FireFlower weapon
+        player.weapon = FireFlower(owner=player)
         self.players.append(player)
         return player
     
@@ -93,6 +104,12 @@ class Game:
         """Update camera position based on players"""
         if not self.players:
             return
+        # In PVP mode, camera is handled per-player on client side
+        if self.pvp_mode:
+            # Just set a default camera for server state (not used in PVP)
+            self.camera_x = 0
+            return
+        # Co-op mode: calculate mean position
         mid = 0
         alive_count = 0
         for player in self.players:
@@ -104,6 +121,16 @@ class Game:
             self.camera_x = int(mid) - SCREEN_WIDTH // 2
             if self.camera_x < 0:
                 self.camera_x = 0
+    
+    def get_player_camera(self, player_name):
+        """Get individual camera position for a player (used in PVP mode)"""
+        for player in self.players:
+            if player.name == player_name and player.is_alive:
+                camera_x = int(player.x) - SCREEN_WIDTH // 2
+                if camera_x < 0:
+                    camera_x = 0
+                return camera_x
+        return 0
     
     def handle_collisions_and_rules(self):
         """Handle all game rules and collisions"""
@@ -165,11 +192,24 @@ class Game:
         if self.won:
             return
         
-        # Update players
+        # Update players and handle fireball attacks
         for player in self.players:
             if player.name in player_inputs:
                 inp = player_inputs[player.name]
                 player.update(self.platforms, inp)
+                # Handle fireball attack
+                if inp.get("attack", False) and hasattr(player, 'weapon'):
+                    fireball = player.weapon.attack()
+                    if fireball:
+                        self.fireballs.append(fireball)
+        
+        # Update fireballs
+        all_entities = list(self.players) + list(self.enemies)
+        for fb in self.fireballs[:]:  # Use slice to avoid modification during iteration
+            if fb.is_alive:
+                fb.update(self.platforms, all_entities)
+            if not fb.is_alive:
+                self.fireballs.remove(fb)
         
         # Update enemies
         for e in self.enemies:
@@ -199,11 +239,20 @@ class Game:
         entities = {}
         for player in self.players:
             if player.is_alive:
-                entities[player.name] = {
-                    "x": float(player.x - self.camera_x),
-                    "y": float(player.y),
-                    "dir": player.direction
-                }
+                # In PVP mode, use individual camera, otherwise use shared camera
+                if self.pvp_mode:
+                    player_camera_x = self.get_player_camera(player.name)
+                    entities[player.name] = {
+                        "x": float(player.x - player_camera_x),
+                        "y": float(player.y),
+                        "dir": player.direction
+                    }
+                else:
+                    entities[player.name] = {
+                        "x": float(player.x - self.camera_x),
+                        "y": float(player.y),
+                        "dir": player.direction
+                    }
         
         # Handle enemies - format.txt shows multiple, so we'll use a list approach
         # But since JSON doesn't allow duplicate keys, we'll send them as goomba_0, goomba_1, etc.
@@ -214,6 +263,15 @@ class Game:
                     "x": float(enemy.x - self.camera_x),
                     "y": float(enemy.y),
                     "dir": enemy.direction
+                }
+        
+        # Handle fireballs
+        for i, fb in enumerate(self.fireballs):
+            if fb.is_alive:
+                entities[f"Fireball_{i}"] = {
+                    "x": float(fb.x - self.camera_x),
+                    "y": float(fb.y),
+                    "dir": fb.direction
                 }
         
         # Build prop data
@@ -244,6 +302,13 @@ class Game:
         for p in self.players:
             player_lives_data[f"{p.name}"] = p.lives
         
+        # In PVP mode, send individual camera positions for each player
+        player_cameras = {}
+        if self.pvp_mode:
+            for player in self.players:
+                if player.is_alive:
+                    player_cameras[player.name] = self.get_player_camera(player.name)
+        
         return {
             "status": 1,
             "player_lives": player_lives_data,
@@ -254,7 +319,9 @@ class Game:
                 "flag": flags_data,
                 "flag_final": flag_final_data
             },
-            "camera_x": self.camera_x
+            "camera_x": self.camera_x,
+            "pvp_mode": self.pvp_mode,
+            "player_cameras": player_cameras if self.pvp_mode else {}
         }
     
     def get_init_dict(self):
@@ -311,9 +378,10 @@ class Server:
         self.available_worlds = self.__get_available_worlds()
         self.selected_world_index = 0  # Start with first world
         self.world_selection_confirmed = False
+        self.pvp_mode = False  # PVP mode toggle
         
         # Initialize game with default world (will be reloaded when confirmed)
-        self.game = Game(self.available_worlds[0] if self.available_worlds else "world1")
+        self.game = Game(self.available_worlds[0] if self.available_worlds else "world1", pvp_mode=False)
         self.available_names = ["Mario", "Luigi", "MushroomRetainer"]
         self.running = True
         self.game_started = False
@@ -406,7 +474,7 @@ class Server:
                     # Assign name and add to game
                     if player_count < len(self.available_names):
                         player_name = self.available_names[player_count]
-                        self.game.add_player(player_name)
+                        self.game.add_player(player_name, pvp_mode=self.pvp_mode)
                         self.player_to_socket[player_name] = conn
                         self.player_names[conn] = player_name
                         self.player_sockets.append(conn)
@@ -427,7 +495,8 @@ class Server:
                         "world_selection": {
                             "available_worlds": self.available_worlds,
                             "selected_index": self.selected_world_index,
-                            "confirmed": self.world_selection_confirmed
+                            "confirmed": self.world_selection_confirmed,
+                            "pvp_mode": self.pvp_mode
                         }
                     }
                     # Include flag positions if available
@@ -556,7 +625,12 @@ class Server:
                     # Handle world selection navigation
                     if "world_selection" in data:
                         ws_input = data["world_selection"]
-                        if "move" in ws_input:
+                        if "toggle_pvp" in ws_input and ws_input["toggle_pvp"]:
+                            # Toggle PVP mode
+                            self.pvp_mode = not self.pvp_mode
+                            print(f"PVP mode {'enabled' if self.pvp_mode else 'disabled'} by {player_name}")
+                            self.__broadcast_world_selection_update()
+                        elif "move" in ws_input:
                             # Up/down navigation
                             if ws_input["move"] == -1:  # Up (previous world)
                                 self.selected_world_index = (self.selected_world_index - 1) % len(self.available_worlds)
@@ -569,6 +643,14 @@ class Server:
                             selected_world = self.available_worlds[self.selected_world_index]
                             print(f"Player {player_name} confirmed world selection: {selected_world}")
                             try:
+                                # Update game PVP mode and reload level
+                                self.game.pvp_mode = self.pvp_mode
+                                # Update all existing players' factions based on PVP mode
+                                for i, p in enumerate(self.game.players):
+                                    if self.pvp_mode:
+                                        p.faction = f"p{i + 1}"
+                                    else:
+                                        p.faction = 'P'
                                 # Try to load the world first
                                 self.game.reload_level(selected_world)
                                 # Only mark as confirmed if loading succeeded
@@ -577,7 +659,7 @@ class Server:
                                 # Start game after a short delay
                                 time.sleep(0.5)
                                 self.game_started = True
-                                print(f"Game starting with world: {selected_world}")
+                                print(f"Game starting with world: {selected_world}, PVP mode: {self.pvp_mode}")
                                 break
                             except Exception as e:
                                 print(f"Error loading world {selected_world}: {e}")
