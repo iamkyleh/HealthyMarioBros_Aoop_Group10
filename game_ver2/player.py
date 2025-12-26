@@ -5,11 +5,11 @@ class Player(Entity):
         super().__init__(rebornpoint[0], rebornpoint[1], width=width, height=height, name=name)
         self.faction = 'P'
         self.lives: int = 3
-        self.speed: float = 5.0
+        self.speed: float = 3.5
         self.jump_strength: float = 15.0
     
-    def take_damage(self, from_faction, respawn_point):
-        if super().take_damage(from_faction):
+    def take_damage(self, his_status, respawn_point):
+        if super().take_damage(his_status):
             self.x, self.y = respawn_point  # respawn position
 
     def actuate(self, inp):

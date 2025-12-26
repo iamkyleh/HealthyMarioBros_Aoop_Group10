@@ -21,6 +21,10 @@ WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 RED   = (220, 50, 50)
 
+START_TIME = time.time()*1000
+def now():
+    return time.time()*1000
+
 img_dic = {
     "Brick": (32, 32),
     "Pipe": (60, 60),
@@ -69,6 +73,8 @@ class GameClient:
 
         # Player / world state
         self.platforms = {"brick": [], "pipe": []}
+        self.flags = []  # Store flag positions from init
+        self.flag_final = None  # Store final flag position from init
         self.camera_x = 0
         self.latest_state = None
         self.running = True
@@ -124,6 +130,10 @@ class GameClient:
             if msg and "welcome" in msg:
                 if "platform" in msg:
                     self.platforms = msg["platform"]
+                if "flag" in msg:
+                    self.flags = msg["flag"]  # Store flag positions
+                if "flag_final" in msg:
+                    self.flag_final = msg["flag_final"]  # Store final flag position
                 if "player_name" in msg:
                     self.name = msg["player_name"]
                 if "role" in msg:
@@ -150,6 +160,7 @@ class GameClient:
             # Start camera thread for jump detection
             self.camera_thread = threading.Thread(target=self._camera_loop, daemon=True)
             self.camera_thread.start()
+
         
         # Now switch to non-blocking mode for game loop
         self.s.settimeout(0.01)  # 10ms timeout for game loop
@@ -259,6 +270,10 @@ class GameClient:
                     # Handle welcome message if received late
                     if "platform" in msg:
                         self.platforms = msg["platform"]
+                    if "flag" in msg:
+                        self.flags = msg["flag"]
+                    if "flag_final" in msg:
+                        self.flag_final = msg["flag_final"]
                     if "player_name" in msg:
                         self.name = msg["player_name"]
         except (socket.error, OSError, ConnectionError, BrokenPipeError) as e:
@@ -324,6 +339,47 @@ class GameClient:
         for p in self.platforms["pipe"]:
             rect = pygame.Rect(p["x"], p["y"], p["w"], p["h"])
             self.screen.blit(self.image["Pipe"], (p["x"] - self.camera_x, p["y"]))
+        
+        # Draw flags - use stored positions, update name from state
+        flag_statuses = []
+        if self.latest_state and "prop" in self.latest_state:
+            flag_statuses = self.latest_state["prop"].get("flag", [])
+        
+        for i, flag_pos in enumerate(self.flags):
+            # Get status from state if available, otherwise use empty string
+            flag_name = ""
+            if i < len(flag_statuses):
+                flag_name = flag_statuses[i].get("name", "")
+            
+            if flag_name:
+                img_name = f"Flag_{flag_name}"
+            else:
+                img_name = "Flag"
+            img = self.image.get(img_name, self.image["Flag"])
+            # Use stored position adjusted by camera
+            x = flag_pos["x"] - self.camera_x
+            y = flag_pos["y"]
+            self.screen.blit(img, (x, y))
+        
+        # Draw final flag - use stored position, update name from state
+        if self.flag_final:
+            flag_final_status = None
+            if self.latest_state and "prop" in self.latest_state:
+                flag_final_status = self.latest_state["prop"].get("flag_final")
+            
+            flag_name = ""
+            if flag_final_status:
+                flag_name = flag_final_status.get("name", "")
+            
+            if flag_name:
+                img_name = f"Flag_final_{flag_name}"
+            else:
+                img_name = "Flag_final"
+            img = self.image.get(img_name, self.image["Flag_final"])
+            # Use stored position adjusted by camera
+            x = self.flag_final["x"] - self.camera_x
+            y = self.flag_final["y"]
+            self.screen.blit(img, (x, y))
 
     def _draw_entities(self):
         if "entity" not in self.latest_state:
@@ -352,27 +408,6 @@ class GameClient:
             x = c["x"] + (img.get_width() - scaled_w) // 2
             y = c["y"]
             self.screen.blit(scaled_img, (x, y))
-        
-        # Draw flags
-        for f in props.get("flag", []):
-            flag_name = f.get("name", "")
-            if flag_name:
-                img_name = f"Flag_{flag_name}"
-            else:
-                img_name = "Flag"
-            img = self.image.get(img_name, self.image["Flag"])
-            self.screen.blit(img, (f["x"], f["y"]))
-        
-        # Draw final flag
-        if props.get("flag_final"):
-            ff = props["flag_final"]
-            flag_name = ff.get("name", "")
-            if flag_name:
-                img_name = f"Flag_final_{flag_name}"
-            else:
-                img_name = "Flag_final"
-            img = self.image.get(img_name, self.image["Flag_final"])
-            self.screen.blit(img, (ff["x"], ff["y"]))
     
     def _draw_status(self):
         y = 16
