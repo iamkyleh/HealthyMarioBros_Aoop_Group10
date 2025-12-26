@@ -2,10 +2,14 @@
 import socket
 import pygame
 import math
+import threading
+import cv2
 from net import send_json, recv_json
 import addpath
+from jump_detector import JumpDetector
+from pose_camera import PoseCamera
 
-HOST = "140.113.66.15"
+HOST = "192.168.0.128"
 PORT = 5000
 
 SCREEN_WIDTH = 800
@@ -137,8 +141,36 @@ class GameClient:
             self.running = False
             return
         
+        # Initialize jump detection (only for players)
+        if self.role == "P":
+            self.jump_detector = JumpDetector()
+            self.pose_camera = PoseCamera()
+            self.pose_jump_detected = False
+            
+            # Start camera thread for jump detection
+            self.camera_thread = threading.Thread(target=self._camera_loop, daemon=True)
+            self.camera_thread.start()
+        
         # Now switch to non-blocking mode for game loop
         self.s.settimeout(0.01)  # 10ms timeout for game loop
+
+    def _camera_loop(self):
+        """Camera loop for pose detection and jump detection"""
+        while self.running:
+            frame, hip_y = self.pose_camera.get_frame_and_y()
+            if frame is None:
+                break
+            
+            # Check for jump detection
+            if self.jump_detector.update(hip_y):
+                self.pose_jump_detected = True
+            
+            # Display camera feed
+            cv2.imshow("Pose Detection", frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+        
+        self.pose_camera.release()
 
     # -------------------- Game Loop -------------------------
     def run(self):
@@ -152,6 +184,7 @@ class GameClient:
             self._draw()
             self.clock.tick(FPS)
         pygame.quit()
+        cv2.destroyAllWindows()
         self.s.close()
 
     # -------------------- Event Handling --------------------
@@ -177,7 +210,12 @@ class GameClient:
         elif keys[pygame.K_RIGHT] or keys[pygame.K_d]:
             move = 1
         
-        jump = bool(keys[pygame.K_UP] or keys[pygame.K_w])
+        jump = bool(keys[pygame.K_UP] or keys[pygame.K_w] or self.pose_jump_detected)
+        
+        # Reset pose jump flag after using it
+        if self.pose_jump_detected:
+            self.pose_jump_detected = False
+            
         attack = bool(keys[pygame.K_SPACE])
         
         # Only send if input changed or every few frames to reduce network traffic
