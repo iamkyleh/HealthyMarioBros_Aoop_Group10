@@ -2,17 +2,19 @@ import threading
 import time
 import socket
 from server import Server, HOST, PORT
-from client import GameClient
+from client import GameClient, _camera_available, JumpDetector, PoseCamera
 from net import send_json, recv_json
 
 def run_server_auto_start():
-    """Run server with automatic start (no manual 'start' command needed)"""
-    # Create server instance but override the wait_for_start method
+    """Run server with automatic world selection"""
+    # Create server instance
     server = Server.__new__(Server)
     
     # Initialize server manually
     import threading as th
-    from server import Game
+    import os
+    import glob
+    import addpath
     
     # Socket tracking
     server.player_sockets = []
@@ -21,7 +23,23 @@ def run_server_auto_start():
     server.player_names = {}
     server.player_to_socket = {}
     server.observer_names = {}
-    server.game = Game()
+    
+    # World selection state
+    world_dir = addpath.world_path("")
+    world_files = glob.glob(os.path.join(world_dir, "world*.json"))
+    worlds = []
+    for wf in sorted(world_files):
+        basename = os.path.basename(wf)
+        if basename.startswith("world") and basename.endswith(".json"):
+            world_name = basename[:-5]
+            worlds.append(world_name)
+    server.available_worlds = worlds if worlds else ["world1"]
+    server.selected_world_index = 0
+    server.world_selection_confirmed = False
+    
+    # Initialize game
+    from server import Game
+    server.game = Game(server.available_worlds[0] if server.available_worlds else "world1")
     server.available_names = ["MushroomRetainer", "Mario", "Luigi"]
     server.running = True
     server.game_started = False
@@ -33,14 +51,13 @@ def run_server_auto_start():
     server.player_accept_thread = th.Thread(target=server._Server__accept_players, daemon=True)
     server.player_accept_thread.start()
     
-    # Wait a bit for clients to connect, then auto-start
-    print("Waiting 2 seconds for clients to connect...")
-    time.sleep(2)
+    # Wait for world selection (will be handled by client)
+    print("Waiting for world selection...")
+    while not server.game_started and server.running:
+        time.sleep(0.1)
     
-    # Auto-start the game
-    server.game_started = True
-    print("Game auto-started!")
-    server._Server__start_game_loop()
+    if server.game_started:
+        server._Server__start_game_loop()
     
     return server
 
@@ -89,6 +106,13 @@ def run_client():
                     self.name = msg["player_name"]
                 if "role" in msg:
                     self.role = msg["role"]
+                if "world_selection" in msg:
+                    ws = msg["world_selection"]
+                    self.available_worlds = ws.get("available_worlds", [])
+                    self.selected_world_index = ws.get("selected_index", 0)
+                    self.world_selection_confirmed = ws.get("confirmed", False)
+                    if self.world_selection_confirmed:
+                        self.world_selection_mode = False
                 role_name = "player" if self.role == "P" else "observer"
                 print(f"Connected as {role_name}" + (f" ({self.name})" if self.name else ""))
             else:
@@ -99,6 +123,34 @@ def run_client():
             print(f"Connection error: {e}")
             self.running = False
             return
+        
+        # Initialize camera if role is player
+        if self.role == "P":
+            self.pose_jump_detected = False
+            if _camera_available:
+                self.jump_detector = JumpDetector()
+                self.pose_camera = PoseCamera()
+                
+                # Start camera thread for jump detection
+                self.camera_thread = threading.Thread(target=self._camera_loop, daemon=True)
+                self.camera_thread.start()
+            else:
+                # Ensure attributes exist even without camera support
+                self.jump_detector = JumpDetector()
+                self.pose_camera = PoseCamera()
+            
+            # Auto-confirm world selection after a short delay
+            def auto_confirm_world():
+                time.sleep(1.0)  # Wait 1 second
+                if self.world_selection_mode and self.role == "P":
+                    try:
+                        send_json(self.s, {"world_selection": {"confirm": True}})
+                        print("Auto-confirmed world selection")
+                    except Exception as e:
+                        print(f"Error auto-confirming world: {e}")
+            
+            auto_confirm_thread = threading.Thread(target=auto_confirm_world, daemon=True)
+            auto_confirm_thread.start()
         
         # Now switch to non-blocking mode for game loop
         self.s.settimeout(0.01)

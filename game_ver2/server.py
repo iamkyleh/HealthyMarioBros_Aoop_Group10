@@ -3,6 +3,8 @@ import json
 import threading
 import time
 import pygame
+import os
+import glob
 
 # Add parent directory to path to import game_ver1 modules if needed
 # sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -29,15 +31,29 @@ enemy_classes = {
 }
 
 class Game:
-    def __init__(self):
+    def __init__(self, filename="world1"):
         self.respawn_point = (80, 400)
-        self.filename = "world1"
+        self.filename = filename
         self.platforms, self.flags, self.flag_final, self.coins, self.enemies = [], [], None, [], []
         self._load_level(self.filename)
         self.players = []
         self.score = 0
         self.won = False
         self.camera_x = 0
+    
+    def reload_level(self, filename):
+        """Reload level with new filename"""
+        try:
+            self.filename = filename
+            self.platforms, self.flags, self.flag_final, self.coins, self.enemies = [], [], None, [], []
+            self._load_level(self.filename)
+            # Reset respawn point
+            self.respawn_point = (80, 400)
+        except Exception as e:
+            print(f"Error reloading level {filename}: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
         
     def _load_level(self, filename):
         with open(addpath.world_path(f"{filename}.json")) as f:
@@ -289,18 +305,48 @@ class Server:
         # Observer bookkeeping (for logging / cleanup)
         self.observer_names = {}  # Maps observer socket -> label
 
-        self.game = Game()
-        self.available_names = ["MushroomRetainer", "Mario", "Luigi"]
+        # World selection state
+        self.available_worlds = self.__get_available_worlds()
+        self.selected_world_index = 0  # Start with first world
+        self.world_selection_confirmed = False
+        
+        # Initialize game with default world (will be reloaded when confirmed)
+        self.game = Game(self.available_worlds[0] if self.available_worlds else "world1")
+        self.available_names = ["Mario", "Luigi", "MushroomRetainer"]
         self.running = True
         self.game_started = False
         self.__init_network()
-        # Start accepting players in background while waiting for 'start'
+        # Start accepting players in background while waiting for world selection
         self.player_accept_thread = threading.Thread(target=self.__accept_players, daemon=True)
         self.player_accept_thread.start()
         
-        self.__wait_for_start()
-        if self.game_started:
-            self.__start_game_loop()
+        # Start world selection loop instead of waiting for start command
+        try:
+            self.__world_selection_loop()
+            # Only start game loop if world selection was confirmed
+            if self.game_started:
+                self.__start_game_loop()
+            else:
+                print("World selection was not confirmed, server shutting down")
+                self.running = False
+        except Exception as e:
+            print(f"Error in world selection or game start: {e}")
+            import traceback
+            traceback.print_exc()
+            self.running = False
+    
+    def __get_available_worlds(self):
+        """Get list of available world files"""
+        world_dir = addpath.world_path("")
+        world_files = glob.glob(os.path.join(world_dir, "world*.json"))
+        worlds = []
+        for wf in sorted(world_files):
+            basename = os.path.basename(wf)
+            # Extract world number (e.g., "world1.json" -> "world1")
+            if basename.startswith("world") and basename.endswith(".json"):
+                world_name = basename[:-5]  # Remove .json extension
+                worlds.append(world_name)
+        return worlds if worlds else ["world1"]  # Default to world1 if none found
     
     def __init_network(self):
         """Initialize network socket"""
@@ -369,13 +415,18 @@ class Server:
                         conn.close()
                         continue
                     
-                    # Send welcome message
+                    # Send welcome message with world selection state
                     init_dict = self.game.get_init_dict()
                     welcome_msg = {
                         "welcome": "Welcome to HealthyMarioBros",
                         "role": role_input,
                         "platform": init_dict["platform"],
-                        "player_name": player_name
+                        "player_name": player_name,
+                        "world_selection": {
+                            "available_worlds": self.available_worlds,
+                            "selected_index": self.selected_world_index,
+                            "confirmed": self.world_selection_confirmed
+                        }
                     }
                     # Include flag positions if available
                     if "flag" in init_dict:
@@ -385,6 +436,14 @@ class Server:
                     
                     send_json(conn, welcome_msg)
                     print(f"Welcome message sent to player {player_name}")
+                    
+                    # Start handler thread for world selection input
+                    thread = threading.Thread(
+                        target=self.__handle_world_selection_input,
+                        args=(conn, player_name),
+                        daemon=True
+                    )
+                    thread.start()
                     
                     # Reset timeout for game loop
                     conn.settimeout(None)
@@ -412,12 +471,17 @@ class Server:
                 self.observer_names[conn] = observer_label
                 conn.settimeout(None)
                 
-                # Send welcome message
+                # Send welcome message with world selection state
                 init_dict = self.game.get_init_dict()
                 welcome_msg = {
                     "welcome": "Welcome to HealthyMarioBros",
                     "role": "O",
-                    "platform": init_dict["platform"]
+                    "platform": init_dict["platform"],
+                    "world_selection": {
+                        "available_worlds": self.available_worlds,
+                        "selected_index": self.selected_world_index,
+                        "confirmed": self.world_selection_confirmed
+                    }
                 }
                 # Include flag positions if available
                 if "flag" in init_dict:
@@ -475,28 +539,119 @@ class Server:
                     print(f"Error accepting new client: {e}")
                 break
     
-    def __wait_for_start(self):
-        """Wait for 'start' command from user input"""
-        print("\n" + "="*50)
-        print("Waiting for 'start' command to begin the game...")
-        print("Type 'start' and press Enter to begin")
-        print("="*50)
-        while not self.game_started:
+    def __handle_world_selection_input(self, sock, player_name):
+        """Handle world selection input from a player"""
+        sock.settimeout(1.0)
+        
+        while not self.game_started and self.running:
             try:
-                command = input().strip().lower()
-                if command == "start":
-                    self.game_started = True
-                    print("Game starting!")
-                    break
-                elif command == "status":
-                    players = len(self.player_sockets)
-                    observers = len(self.observer_sockets)
-                    print(f"Current status: {players} players, {observers} observers")
-                else:
-                    print(f"Unknown command: '{command}'. Type 'start' to begin or 'status' to check connections.")
-            except (EOFError, KeyboardInterrupt):
-                print("\nShutting down server...")
-                self.running = False
+                data = recv_json(sock, timeout=1.0)
+                if data is None:
+                    continue
+                
+                # Check for world selection input
+                if isinstance(data, dict):
+                    # Handle world selection navigation
+                    if "world_selection" in data:
+                        ws_input = data["world_selection"]
+                        if "move" in ws_input:
+                            # Up/down navigation
+                            if ws_input["move"] == -1:  # Up (previous world)
+                                self.selected_world_index = (self.selected_world_index - 1) % len(self.available_worlds)
+                                self.__broadcast_world_selection_update()
+                            elif ws_input["move"] == 1:  # Down (next world)
+                                self.selected_world_index = (self.selected_world_index + 1) % len(self.available_worlds)
+                                self.__broadcast_world_selection_update()
+                        elif "confirm" in ws_input and ws_input["confirm"]:
+                            # Confirm world selection and start game
+                            selected_world = self.available_worlds[self.selected_world_index]
+                            print(f"Player {player_name} confirmed world selection: {selected_world}")
+                            try:
+                                # Try to load the world first
+                                self.game.reload_level(selected_world)
+                                # Only mark as confirmed if loading succeeded
+                                self.world_selection_confirmed = True
+                                self.__broadcast_world_selection_update()
+                                # Start game after a short delay
+                                time.sleep(0.5)
+                                self.game_started = True
+                                print(f"Game starting with world: {selected_world}")
+                                break
+                            except Exception as e:
+                                print(f"Error loading world {selected_world}: {e}")
+                                import traceback
+                                traceback.print_exc()
+                                # Send error message back to client
+                                error_msg = {
+                                    "world_selection": {
+                                        "available_worlds": self.available_worlds,
+                                        "selected_index": self.selected_world_index,
+                                        "confirmed": False,
+                                        "error": f"Failed to load world: {e}"
+                                    }
+                                }
+                                try:
+                                    send_json(sock, error_msg)
+                                except:
+                                    pass
+                                # Don't break, allow retry
+                                continue
+            except (socket.error, OSError, ConnectionError, BrokenPipeError) as e:
+                print(f"Error receiving world selection input from {player_name}: {e}")
+                break
+            except Exception as e:
+                if self.running:
+                    print(f"Unexpected error in world selection handler: {e}")
+    
+    def __broadcast_world_selection_update(self):
+        """Broadcast world selection state to all clients"""
+        update_msg = {
+            "world_selection": {
+                "available_worlds": self.available_worlds,
+                "selected_index": self.selected_world_index,
+                "confirmed": self.world_selection_confirmed
+            }
+        }
+        
+        # If confirmed, also send updated platform data
+        if self.world_selection_confirmed:
+            init_dict = self.game.get_init_dict()
+            update_msg["platform"] = init_dict["platform"]
+            if "flag" in init_dict:
+                update_msg["flag"] = init_dict["flag"]
+            if "flag_final" in init_dict:
+                update_msg["flag_final"] = init_dict["flag_final"]
+        
+        # Send to all connected clients
+        disconnected = []
+        for sock in self.player_sockets + self.observer_sockets:
+            try:
+                send_json(sock, update_msg)
+            except Exception as e:
+                print(f"Error broadcasting world selection update: {e}")
+                disconnected.append(sock)
+        
+        # Remove disconnected clients
+        for sock in disconnected:
+            self.__remove_client(sock)
+    
+    def __world_selection_loop(self):
+        """World selection loop - wait for players to select world"""
+        print("\n" + "="*50)
+        print("Waiting for players to select world...")
+        print("Players can use UP/DOWN arrow keys to navigate and Enter to confirm")
+        print("="*50)
+        
+        # Broadcast initial world selection state
+        self.__broadcast_world_selection_update()
+        
+        # Wait for world selection confirmation
+        while not self.game_started and self.running:
+            time.sleep(0.1)  # Small delay to prevent busy waiting
+            if self.world_selection_confirmed:
+                # Give a moment for all threads to see the game_started flag
+                time.sleep(0.2)
+                self.game_started = True
                 break
     
     def __remove_client(self, sock, player_name=None):
@@ -547,8 +702,14 @@ class Server:
                     continue
                 if data and role == "P":
                     # Only process input from players
-                    # Store input for this player (data should be {"move": int, "jump": bool, "attack": bool})
+                    # Ignore world selection messages (they're handled by world selection handlers)
+                    if isinstance(data, dict) and "world_selection" in data:
+                        continue
+                    # Store input for this player (data should be {"move": int, "jump": bool, "attack": bool} or {player_name: {...}})
                     self.player_inputs[client_name] = data
+                    # Debug: print received input
+                    if isinstance(data, dict) and ("move" in data or client_name in data):
+                        print(f"Received input from {client_name}: {data}")
                 # Observers don't send input, so we ignore their messages
             except (socket.error, OSError, ConnectionError, BrokenPipeError) as e:
                 # Connection error - remove client
@@ -566,24 +727,39 @@ class Server:
     
     def __start_game_loop(self):
         """Start game update loop and client handlers"""
-        # Start client handler threads for all currently connected clients
-        for sock in list(self.player_sockets):
-            player_name = self.player_names.get(sock, f"player_{id(sock)}")
-            thread = threading.Thread(
-                target=self.__handle_client,
-                args=(sock, player_name, "P"),
-                daemon=True
-            )
-            thread.start()
+        try:
+            print("Starting game loop...")
+            print(f"game_started = {self.game_started}, running = {self.running}")
+            print(f"Player sockets: {len(self.player_sockets)}, Observer sockets: {len(self.observer_sockets)}")
+            
+            # Wait a moment to ensure world selection handlers have exited
+            time.sleep(0.2)
+            
+            # Start client handler threads for all currently connected clients
+            for sock in list(self.player_sockets):
+                player_name = self.player_names.get(sock, f"player_{id(sock)}")
+                thread = threading.Thread(
+                    target=self.__handle_client,
+                    args=(sock, player_name, "P"),
+                    daemon=True
+                )
+                thread.start()
+                print(f"Started game handler for player {player_name}")
 
-        for sock in list(self.observer_sockets):
-            observer_label = self.observer_names.get(sock, f"observer_{id(sock)}")
-            thread = threading.Thread(
-                target=self.__handle_client,
-                args=(sock, observer_label, "O"),
-                daemon=True
-            )
-            thread.start()
+            for sock in list(self.observer_sockets):
+                observer_label = self.observer_names.get(sock, f"observer_{id(sock)}")
+                thread = threading.Thread(
+                    target=self.__handle_client,
+                    args=(sock, observer_label, "O"),
+                    daemon=True
+                )
+                thread.start()
+                print(f"Started game handler for observer {observer_label}")
+        except Exception as e:
+            print(f"Error starting game loop: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
         
         # Start a thread to accept new clients (as observers) even after game starts
         accept_thread = threading.Thread(target=self.__accept_new_clients, daemon=True)
@@ -592,48 +768,59 @@ class Server:
         # Game loop
         clock = time.time()
         while self.running:
-            # Collect inputs
-            player_inputs = {}
-            for player_name, sock in self.player_to_socket.items():
-                if player_name in self.player_inputs:
-                    # Client may send {"mario": {...}} or just {...}
-                    inp = self.player_inputs[player_name]
-                    if isinstance(inp, dict) and player_name in inp:
-                        # Extract from nested format
-                        player_inputs[player_name] = inp[player_name]
-                    elif isinstance(inp, dict) and "move" in inp:
-                        # Direct format
-                        player_inputs[player_name] = inp
-            
-            # Update game
-            self.game.update(player_inputs)
-            
-            # Send state to all clients (players and observers)
-            state = self.game.get_state_dict()
-            disconnected_clients = []
-            for sock in self.player_sockets + self.observer_sockets:
-                try:
-                    send_json(sock, state)
-                except Exception as e:
-                    print(f"Error sending to client: {e}")
-                    # Find which client this socket belongs to
-                    client_name = self.player_names.get(sock) or self.observer_names.get(sock)
-                    if client_name:
-                        disconnected_clients.append((sock, client_name if sock in self.player_sockets else None))
-                    else:
-                        # Observer or unknown client
-                        disconnected_clients.append((sock, None))
-            
-            # Remove disconnected clients
-            for sock, player_name in disconnected_clients:
-                self.__remove_client(sock, player_name)
-            
-            # Frame rate control (60 FPS)
-            elapsed = time.time() - clock
-            sleep_time = max(0, (1.0/60.0) - elapsed)
-            if sleep_time > 0:
-                time.sleep(sleep_time)
-            clock = time.time()
+            try:
+                # Collect inputs
+                player_inputs = {}
+                for player_name, sock in self.player_to_socket.items():
+                    if player_name in self.player_inputs:
+                        # Client may send {"mario": {...}} or just {...}
+                        inp = self.player_inputs[player_name]
+                        if isinstance(inp, dict) and player_name in inp:
+                            # Extract from nested format
+                            player_inputs[player_name] = inp[player_name]
+                        elif isinstance(inp, dict) and "move" in inp:
+                            # Direct format
+                            player_inputs[player_name] = inp
+                
+                # Debug: print collected inputs
+                if player_inputs:
+                    print(f"Collected inputs: {player_inputs}")
+                
+                # Update game
+                self.game.update(player_inputs)
+                
+                # Send state to all clients (players and observers)
+                state = self.game.get_state_dict()
+                disconnected_clients = []
+                for sock in self.player_sockets + self.observer_sockets:
+                    try:
+                        send_json(sock, state)
+                    except Exception as e:
+                        print(f"Error sending to client: {e}")
+                        # Find which client this socket belongs to
+                        client_name = self.player_names.get(sock) or self.observer_names.get(sock)
+                        if client_name:
+                            disconnected_clients.append((sock, client_name if sock in self.player_sockets else None))
+                        else:
+                            # Observer or unknown client
+                            disconnected_clients.append((sock, None))
+                
+                # Remove disconnected clients
+                for sock, player_name in disconnected_clients:
+                    self.__remove_client(sock, player_name)
+                
+                # Frame rate control (60 FPS)
+                elapsed = time.time() - clock
+                sleep_time = max(0, (1.0/60.0) - elapsed)
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+                clock = time.time()
+            except Exception as e:
+                print(f"Error in game loop: {e}")
+                import traceback
+                traceback.print_exc()
+                # Continue running unless it's a critical error
+                time.sleep(0.1)  # Small delay before continuing
     
     def shutdown(self):
         """Shutdown server"""
