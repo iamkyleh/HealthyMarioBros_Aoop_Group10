@@ -12,6 +12,15 @@ from detection.pose_camera import PoseCamera
 from detection.hand_detector import HandDetector
 from detection.attack_detector import AttackDetector
 
+try:
+    import cv2
+    from jump_detector import JumpDetector
+    from pose_camera import PoseCamera
+    _camera_available = True
+except Exception as e:
+    _camera_available = False
+    print(f"[WARN] Camera dependencies unavailable ({e}); running without pose/jump detection.")
+
     class JumpDetector:
         """Fallback stub when real jump detector is unavailable."""
         def update(self, hip_y):
