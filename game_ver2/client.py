@@ -9,7 +9,7 @@ import addpath
 from jump_detector import JumpDetector
 from pose_camera import PoseCamera
 
-HOST = "140.113.66.15"
+HOST = "192.168.0.128"
 PORT = 5000
 
 SCREEN_WIDTH = 800
@@ -151,6 +151,7 @@ class GameClient:
             self.running = False
             return
         
+        # Initialize jump detection (only for players)
         if self.role == "P":
             self.jump_detector = JumpDetector()
             self.pose_camera = PoseCamera()
