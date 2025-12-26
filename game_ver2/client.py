@@ -10,6 +10,7 @@ import time
 from detection.jump_detector import JumpDetector
 from detection.pose_camera import PoseCamera
 from detection.hand_detector import HandDetector
+from detection.attack_detector import AttackDetector
 
 try:
     import cv2
@@ -199,8 +200,12 @@ class GameClient:
         if self.role == "P":
             self.jump_detector = JumpDetector()
             self.hand_detector = HandDetector()
+            self.attack_detector = AttackDetector()
             self.pose_camera = PoseCamera()
             self.pose_jump_detected = False
+            self.attack_detected = False
+            self.jump_count = 0
+            self.attack_count = 0
             self.pose_move = 0  # -1 left, 0 none, 1 right
             
             # Start camera thread for jump detection
@@ -223,6 +228,12 @@ class GameClient:
             # Check for jump detection
             if self.jump_detector.update(hip_y):
                 self.pose_jump_detected = True
+                self.jump_count += 1
+            
+            # Check for attack detection
+            if self.attack_detector.detect_attack(frame):
+                self.attack_detected = True
+                self.attack_count += 1
             
             # Check for hand detection
             hand_move = self.hand_detector.update(pose_landmarks, self.pose_camera.mp_pose)
@@ -233,12 +244,17 @@ class GameClient:
             else:
                 self.pose_move = 0
             
+            # Add count overlays
+            cv2.putText(frame, f"Jumps: {self.jump_count}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            cv2.putText(frame, f"Attacks: {self.attack_count}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            
             # Display camera feed
             cv2.imshow("Pose Detection", frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
         
         self.pose_camera.release()
+        self.attack_detector.release()
 
     # -------------------- Game Loop -------------------------
     def run(self):
@@ -343,7 +359,11 @@ class GameClient:
         if self.pose_jump_detected:
             self.pose_jump_detected = False
             
-        attack = bool(keys[pygame.K_SPACE])
+        attack = bool(keys[pygame.K_SPACE] or self.attack_detected)
+        
+        # Reset attack flag after using it
+        if self.attack_detected:
+            self.attack_detected = False
         
         # Only send if input changed or every few frames to reduce network traffic
         current_input = {"move": move, "jump": jump, "attack": attack}
