@@ -2,12 +2,31 @@
 import socket
 import pygame
 import math
+import time
 import threading
-import cv2
 from net import send_json, recv_json
 import addpath
-from jump_detector import JumpDetector
-from pose_camera import PoseCamera
+# Camera-related imports are optional so the game can still run without them
+try:
+    import cv2 # pyright: ignore[reportMissingImports]
+    from jump_detector import JumpDetector # pyright: ignore[reportMissingImports]
+    from pose_camera import PoseCamera  # pyright: ignore[reportMissingImports]
+    _camera_available = True
+except Exception as e:
+    _camera_available = False
+    print(f"[WARN] Camera dependencies unavailable ({e}); running without pose/jump detection.")
+
+    class JumpDetector:
+        """Fallback stub when real jump detector is unavailable."""
+        def update(self, hip_y):
+            return False
+
+    class PoseCamera:
+        """Fallback stub camera."""
+        def get_frame_and_y(self):
+            return None, None
+        def release(self):
+            pass
 
 HOST = "140.113.66.15"
 PORT = 5000
@@ -152,13 +171,18 @@ class GameClient:
             return
         
         if self.role == "P":
-            self.jump_detector = JumpDetector()
-            self.pose_camera = PoseCamera()
             self.pose_jump_detected = False
-            
-            # Start camera thread for jump detection
-            self.camera_thread = threading.Thread(target=self._camera_loop, daemon=True)
-            self.camera_thread.start()
+            if _camera_available:
+                self.jump_detector = JumpDetector()
+                self.pose_camera = PoseCamera()
+                
+                # Start camera thread for jump detection
+                self.camera_thread = threading.Thread(target=self._camera_loop, daemon=True)
+                self.camera_thread.start()
+            else:
+                # Ensure attributes exist even without camera support
+                self.jump_detector = JumpDetector()
+                self.pose_camera = PoseCamera()
 
         
         # Now switch to non-blocking mode for game loop
@@ -166,6 +190,8 @@ class GameClient:
 
     def _camera_loop(self):
         """Camera loop for pose detection and jump detection"""
+        if not _camera_available:
+            return
         while self.running:
             frame, hip_y = self.pose_camera.get_frame_and_y()
             if frame is None:
@@ -194,7 +220,8 @@ class GameClient:
             self._draw()
             self.clock.tick(FPS)
         pygame.quit()
-        cv2.destroyAllWindows()
+        if _camera_available:
+            cv2.destroyAllWindows()
         self.s.close()
 
     # -------------------- Event Handling --------------------
