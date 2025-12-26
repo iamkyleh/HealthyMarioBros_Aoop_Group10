@@ -2,8 +2,8 @@
 import socket
 import pygame
 import math
+import time
 import threading
-import cv2
 from net import send_json, recv_json
 import addpath
 import time
@@ -11,7 +11,19 @@ from detection.jump_detector import JumpDetector
 from detection.pose_camera import PoseCamera
 from detection.hand_detector import HandDetector
 
-HOST = "192.168.0.128"
+    class JumpDetector:
+        """Fallback stub when real jump detector is unavailable."""
+        def update(self, hip_y):
+            return False
+
+    class PoseCamera:
+        """Fallback stub camera."""
+        def get_frame_and_y(self):
+            return None, None
+        def release(self):
+            pass
+
+HOST = "192.168.1.32"
 PORT = 5000
 
 SCREEN_WIDTH = 800
@@ -44,7 +56,10 @@ img_dic = {
     "Flag_final": (48, 256),
     "Flag_final_Mario": (48, 256),
     "Flag_final_Luigi": (48, 256),
-    "Flag_final_MushroomRetainer": (48, 256)
+    "Flag_final_MushroomRetainer": (48, 256),
+    "Fireball": (8, 8),
+    # FireFlower power-up image (used when player has fire ability)
+    "FireFlower": (24, 24)
 }
 
 def load_image(name, size=None):
@@ -86,6 +101,17 @@ class GameClient:
         self.client_id = None
         self.name = None
         self.role = None  # "P" for player or "O" for observer
+
+        # World selection state
+        self.world_selection_mode = True
+        self.available_worlds = []
+        self.selected_world_index = 0
+        self.world_selection_confirmed = False
+        self.world_selection_animation_time = 0
+        self.pvp_mode = False
+        
+        # PVP mode camera (individual per player)
+        self.pvp_camera_x = 0
 
         # Load images
         self._load_img()
@@ -140,6 +166,13 @@ class GameClient:
                     self.name = msg["player_name"]
                 if "role" in msg:
                     self.role = msg["role"]
+                if "world_selection" in msg:
+                    ws = msg["world_selection"]
+                    self.available_worlds = ws.get("available_worlds", [])
+                    self.selected_world_index = ws.get("selected_index", 0)
+                    self.world_selection_confirmed = ws.get("confirmed", False)
+                    if self.world_selection_confirmed:
+                        self.world_selection_mode = False
                 role_name = "player" if self.role == "P" else "observer"
                 print(f"Connected as {role_name}" + (f" ({self.name})" if self.name else ""))
             else:
@@ -171,6 +204,8 @@ class GameClient:
 
     def _camera_loop(self):
         """Camera loop for pose detection and jump detection"""
+        if not _camera_available:
+            return
         while self.running:
             frame, hip_y, pose_landmarks = self.pose_camera.get_frame_and_y()
             if frame is None:
@@ -202,13 +237,21 @@ class GameClient:
             self._handle_events()
             # Receive state first (non-blocking)
             self._receive_state()
-            # Then send input
-            self._send_input()
-            # Draw
-            self._draw()
+            
+            if self.world_selection_mode:
+                # World selection mode
+                self._send_world_selection_input()
+                self._draw_world_selection()
+            else:
+                # Game mode
+                self._send_input()
+                self._draw()
+            
             self.clock.tick(FPS)
+            self.world_selection_animation_time += 1
         pygame.quit()
-        cv2.destroyAllWindows()
+        if _camera_available:
+            cv2.destroyAllWindows()
         self.s.close()
 
     # -------------------- Event Handling --------------------
@@ -216,7 +259,54 @@ class GameClient:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
+            elif event.type == pygame.KEYDOWN and self.world_selection_mode and self.role == "P":
+                # Handle world selection input
+                if event.key == pygame.K_UP or event.key == pygame.K_w:
+                    # Move up (previous world)
+                    self._send_world_selection_move(-1)
+                elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
+                    # Move down (next world)
+                    self._send_world_selection_move(1)
+                elif event.key == pygame.K_v:
+                    # Toggle PVP mode
+                    self._toggle_pvp_mode()
+                elif event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
+                    # Confirm world selection
+                    self._confirm_world_selection()
+    
+    def _send_world_selection_move(self, direction):
+        """Send world selection movement to server"""
+        if self.s is None or not self.running:
+            return
+        try:
+            send_json(self.s, {"world_selection": {"move": direction}})
+        except Exception as e:
+            print(f"Error sending world selection input: {e}")
 
+    # --------------------- World Selection Input ------------
+    def _send_world_selection_input(self):
+        """Send world selection input to server (called every frame, but only sends on key events)"""
+        # Input is handled in _handle_events via KEYDOWN events
+        pass
+    
+    def _toggle_pvp_mode(self):
+        """Toggle PVP mode"""
+        if self.s is None or not self.running:
+            return
+        try:
+            send_json(self.s, {"world_selection": {"toggle_pvp": True}})
+        except Exception as e:
+            print(f"Error toggling PVP mode: {e}")
+    
+    def _confirm_world_selection(self):
+        """Confirm world selection"""
+        if self.s is None or not self.running:
+            return
+        try:
+            send_json(self.s, {"world_selection": {"confirm": True}})
+        except Exception as e:
+            print(f"Error confirming world selection: {e}")
+    
     # --------------------- Input Send -----------------------
     def _send_input(self):
         # Only send input if this client is a player
@@ -281,6 +371,25 @@ class GameClient:
                 msg = recv_json(self.s, timeout=0.001)  # Very short timeout
                 if msg is None:
                     break  # No more data available
+                
+                # Handle world selection updates
+                if "world_selection" in msg:
+                    ws = msg["world_selection"]
+                    self.available_worlds = ws.get("available_worlds", [])
+                    self.selected_world_index = ws.get("selected_index", 0)
+                    self.world_selection_confirmed = ws.get("confirmed", False)
+                    self.pvp_mode = ws.get("pvp_mode", False)
+                    if self.world_selection_confirmed:
+                        self.world_selection_mode = False
+                        # Update platforms if provided
+                        if "platform" in msg:
+                            self.platforms = msg["platform"]
+                        if "flag" in msg:
+                            self.flags = msg["flag"]
+                        if "flag_final" in msg:
+                            self.flag_final = msg["flag_final"]
+                
+                # Handle game state updates
                 if "status" in msg:  # Check if it's a state update
                     self.latest_state = msg
                 elif "welcome" in msg:
@@ -293,6 +402,13 @@ class GameClient:
                         self.flag_final = msg["flag_final"]
                     if "player_name" in msg:
                         self.name = msg["player_name"]
+                    if "world_selection" in msg:
+                        ws = msg["world_selection"]
+                        self.available_worlds = ws.get("available_worlds", [])
+                        self.selected_world_index = ws.get("selected_index", 0)
+                        self.world_selection_confirmed = ws.get("confirmed", False)
+                        if self.world_selection_confirmed:
+                            self.world_selection_mode = False
         except (socket.error, OSError, ConnectionError, BrokenPipeError) as e:
             # Connection lost
             print(f"Connection lost while receiving: {e}")
@@ -323,6 +439,91 @@ class GameClient:
         if missing:
             pygame.quit()
 
+    def _draw_world_selection(self):
+        """Draw world selection screen"""
+        self.screen.fill(SKY_BLUE)
+        
+        # Draw cloud background
+        for i in range(10):
+            cx = (i * 200) % (SCREEN_WIDTH + 100) - 50
+            cy = 80 + (i % 3) * 30
+            self._draw_cloud(cx, cy)
+        
+        # Draw background (world preview) - use current selected world's platforms if available
+        if self.platforms and len(self.platforms.get("brick", [])) > 0:
+            # Draw platforms as background
+            camera_x = 0  # Static camera for selection screen
+            for b in self.platforms["brick"]:
+                rect = pygame.Rect(b["x"], b["y"], b["w"], b["h"])
+                draw_tiled(self.screen, self.image["Brick"], rect, camera_x)
+            for p in self.platforms["pipe"]:
+                self.screen.blit(self.image["Pipe"], (p["x"] - camera_x, p["y"]))
+        
+        # Draw semi-transparent overlay
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        overlay.set_alpha(180)
+        overlay.fill(BLACK)
+        self.screen.blit(overlay, (0, 0))
+        
+        # Draw world selection text
+        center_x = SCREEN_WIDTH // 2
+        center_y = SCREEN_HEIGHT // 2
+        
+        # Floating animation
+        float_offset = int(10 * math.sin(self.world_selection_animation_time * 0.1))
+        
+        # Draw all available worlds with selected one highlighted
+        if len(self.available_worlds) > 0:
+            y_start = center_y - (len(self.available_worlds) * 40) // 2
+            
+            for i, world_name in enumerate(self.available_worlds):
+                y_pos = y_start + i * 60 + float_offset
+                
+                # Highlight selected world
+                if i == self.selected_world_index:
+                    # Draw selection indicator
+                    indicator_text = self.big_font.render(">", True, WHITE)
+                    self.screen.blit(indicator_text, (center_x - 150, y_pos - 20))
+                    indicator_text = self.big_font.render("<", True, WHITE)
+                    self.screen.blit(indicator_text, (center_x + 100, y_pos - 20))
+                    
+                    # Draw selected world name larger
+                    world_text = self.big_font.render(world_name.upper(), True, WHITE)
+                    text_rect = world_text.get_rect(center=(center_x, y_pos))
+                    self.screen.blit(world_text, text_rect)
+                else:
+                    # Draw other worlds smaller and dimmed
+                    world_text = self.font.render(world_name.upper(), True, (200, 200, 200))
+                    text_rect = world_text.get_rect(center=(center_x, y_pos))
+                    self.screen.blit(world_text, text_rect)
+        else:
+            # No worlds available
+            no_worlds_text = self.font.render("No worlds available", True, WHITE)
+            text_rect = no_worlds_text.get_rect(center=(center_x, center_y))
+            self.screen.blit(no_worlds_text, text_rect)
+        
+        # Draw PVP mode status
+        pvp_text = self.font.render(f"PVP Mode: {'ON' if self.pvp_mode else 'OFF'} (Press V to toggle)", True, WHITE)
+        pvp_rect = pvp_text.get_rect(center=(center_x, SCREEN_HEIGHT - 100))
+        self.screen.blit(pvp_text, pvp_rect)
+        
+        # Draw PVP mode status
+        pvp_text = self.font.render(f"PVP Mode: {'ON' if self.pvp_mode else 'OFF'} (Press V to toggle)", True, WHITE)
+        pvp_rect = pvp_text.get_rect(center=(center_x, SCREEN_HEIGHT - 100))
+        self.screen.blit(pvp_text, pvp_rect)
+        
+        # Draw instructions
+        if self.role == "P":
+            instruction_text = self.font.render("Use UP/DOWN arrows to navigate, ENTER to confirm", True, WHITE)
+            inst_rect = instruction_text.get_rect(center=(center_x, SCREEN_HEIGHT - 50))
+            self.screen.blit(instruction_text, inst_rect)
+        else:
+            instruction_text = self.font.render("Waiting for players to select world...", True, WHITE)
+            inst_rect = instruction_text.get_rect(center=(center_x, SCREEN_HEIGHT - 50))
+            self.screen.blit(instruction_text, inst_rect)
+        
+        pygame.display.flip()
+    
     def _draw(self):
         self.screen.fill(SKY_BLUE)
         # --- CLOUD BACKGROUND ---
@@ -336,8 +537,14 @@ class GameClient:
         
         # check if we have a latest state
         if self.latest_state:
-            # Update camera from state
-            self.camera_x = self.latest_state.get("camera_x", 0)
+            # Update camera from state (handle PVP mode)
+            if self.latest_state.get("pvp_mode", False) and self.name:
+                # PVP mode: use individual camera for this player
+                player_cameras = self.latest_state.get("player_cameras", {})
+                self.camera_x = player_cameras.get(self.name, 0)
+            else:
+                # Co-op mode: use shared camera
+                self.camera_x = self.latest_state.get("camera_x", 0)
             self._draw_entities()
             self._draw_props()
             self._draw_status()

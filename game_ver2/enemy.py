@@ -13,6 +13,10 @@ class Enemy(Entity):
     def points(self) -> int:
         return self._points
     
+    @property
+    def can_deal_damage(self) -> bool:
+        return True
+    
     def _ground_ahead(self, platforms, step=6):
         """Return True if there's ground under the leading edge after a small step."""
         probe_x = self.x + (self.width + 1 if self.vel_x > 0 else -1) + (step if self.vel_x > 0 else -step)
@@ -54,6 +58,10 @@ class KoopaTroopa(Enemy):
         self.wander_horizonal(platforms)
         self.move_and_collide_vertical(platforms)
         self.direction = 1 if self.vel_x>0 else -1
+    
+    @property
+    def can_deal_damage(self) -> bool:
+        return self.name == "KoopaTroopa" or self.vel_y != 0
 
     def take_damage(self, his_status) -> bool:
         if not self.is_alive:
@@ -67,6 +75,6 @@ class KoopaTroopa(Enemy):
             self.x += 10
             return True
         elif self.name == "KoopaTroopaShell" and his_status.faction != self.faction:
-            self.vel_x += 5
+            self.vel_x = 0 if self.vel_x == 5 else his_status.vel_x * 5
             return True
         return False
