@@ -1,5 +1,8 @@
 # Server-side entity classes (no drawing code)
+from math import factorial
+from nt import DirEntry
 import pygame
+from types import SimpleNamespace
 
 GRAVITY = 0.8
 FRICTION = 0.85
@@ -9,8 +12,8 @@ class Entity:
         self.name = self.__class__.__name__ if name is None else name
         self.x: float = x
         self.y: float = y
-        self.width: int = width
-        self.height: int = height
+        self.width: float = width
+        self.height: float = height
         # Physics properties
         self.vel_x: float = 0.0
         self.vel_y: float = 0.0
@@ -31,10 +34,18 @@ class Entity:
     def is_alive(self) -> bool:
         return self.lives > 0
     
-    def take_damage(self, from_faction) -> bool:
+    @property
+    def status(self):
+        s = SimpleNamespace(
+            faction = self.faction,
+            direction = self.direction
+        )
+        return s
+    
+    def take_damage(self, his_status) -> bool:
         if not self.is_alive:
             return False
-        if from_faction != self.faction:
+        if his_status.faction != self.faction:
             self.lives -= 1
             self.lives = max(0, self.lives)
             return True

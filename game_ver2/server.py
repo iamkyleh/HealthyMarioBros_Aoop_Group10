@@ -19,6 +19,10 @@ PORT = 5000
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
 
+START_TIME = time.time()*1000
+def now():
+    return time.time()*1000
+
 enemy_classes = {
     "Goomba": Goomba,
     "KoopaTroopa": KoopaTroopa,
@@ -101,19 +105,19 @@ class Game:
                     c.collected = True
                     self.score += 100
             
-            # enemies
+            # Goombas
             for e in self.enemies:
                 if not e.is_alive:
                     continue
                 if mrect.colliderect(e.rect):
                     if player.vel_y > 0 and (mrect.bottom - e.rect.top) < 20:
                         # Kill enemy
-                        if e.take_damage(from_faction=player.faction):
+                        if e.take_damage(his_status=player.status):
                             self.score += e.points
                         player.vel_y = -8
-                    elif e.canDealDamage:
+                    else:
                         # Kill player
-                        player.take_damage(from_faction=e.faction, respawn_point=self.respawn_point)
+                        player.take_damage(his_status=e.status, respawn_point=self.respawn_point)
             
             # Player-to-player collisions
             for p in self.players:
@@ -204,19 +208,16 @@ class Game:
                     "rotate": c.rotation
                 })
         
+        # Only send flag names/status, not positions (positions sent in init)
         flags_data = []
         for f in self.flags:
             flags_data.append({
-                "x": float(f.x - self.camera_x),
-                "y": float(f.y),
                 "name": f.touched_by if f.touched_by else ""
             })
         
         flag_final_data = None
         if self.flag_final:
             flag_final_data = {
-                "x": float(self.flag_final.x - self.camera_x),
-                "y": float(self.flag_final.y),
                 "name": self.flag_final.touched_by if self.flag_final.touched_by else ""
             }
         
@@ -248,12 +249,29 @@ class Game:
             else:
                 brick_platforms.append({"x": p.left, "y": p.top, "w": p.width, "h": p.height})
         
+        # Include flag positions in initial data
+        flags_data = []
+        for f in self.flags:
+            flags_data.append({
+                "x": float(f.x),
+                "y": float(f.y)
+            })
+        
+        flag_final_data = None
+        if self.flag_final:
+            flag_final_data = {
+                "x": float(self.flag_final.x),
+                "y": float(self.flag_final.y)
+            }
+        
         return {
             "welcome": "Welcome to HealthyMarioBros",
             "platform": {
                 "brick": brick_platforms,
                 "pipe": pipe_platforms
-            }
+            },
+            "flag": flags_data,
+            "flag_final": flag_final_data
         }
 
 
@@ -352,12 +370,18 @@ class Server:
                         continue
                     
                     # Send welcome message
+                    init_dict = self.game.get_init_dict()
                     welcome_msg = {
                         "welcome": "Welcome to HealthyMarioBros",
                         "role": role_input,
-                        "platform": self.game.get_init_dict()["platform"],
+                        "platform": init_dict["platform"],
                         "player_name": player_name
                     }
+                    # Include flag positions if available
+                    if "flag" in init_dict:
+                        welcome_msg["flag"] = init_dict["flag"]
+                    if "flag_final" in init_dict:
+                        welcome_msg["flag_final"] = init_dict["flag_final"]
                     
                     send_json(conn, welcome_msg)
                     print(f"Welcome message sent to player {player_name}")
@@ -389,11 +413,17 @@ class Server:
                 conn.settimeout(None)
                 
                 # Send welcome message
+                init_dict = self.game.get_init_dict()
                 welcome_msg = {
                     "welcome": "Welcome to HealthyMarioBros",
                     "role": "O",
-                    "platform": self.game.get_init_dict()["platform"]
+                    "platform": init_dict["platform"]
                 }
+                # Include flag positions if available
+                if "flag" in init_dict:
+                    welcome_msg["flag"] = init_dict["flag"]
+                if "flag_final" in init_dict:
+                    welcome_msg["flag_final"] = init_dict["flag_final"]
                 send_json(conn, welcome_msg)
                 
                 # Start handler thread
