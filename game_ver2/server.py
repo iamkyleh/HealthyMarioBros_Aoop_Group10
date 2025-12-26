@@ -9,10 +9,10 @@ import glob
 # Add parent directory to path to import game_ver1 modules if needed
 # sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from net import send_json, recv_json
-from player import *
-from enemy import *
-from props import *
+from game.net import send_json, recv_json
+from game.player import *
+from game.enemy import *
+from game.props import *
 from weapon import FireFlower, FireballProjectile
 import addpath
 

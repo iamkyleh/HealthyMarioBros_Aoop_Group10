@@ -4,17 +4,15 @@ import pygame
 import math
 import time
 import threading
-from net import send_json, recv_json
+from game.net import send_json, recv_json
 import addpath
 import time
-from detection.jump_detector import JumpDetector
-from detection.pose_camera import PoseCamera
-from detection.hand_detector import HandDetector
 
 try:
     import cv2
-    from jump_detector import JumpDetector
-    from pose_camera import PoseCamera
+    from detection.jump_detector import JumpDetector
+    from detection.pose_camera import PoseCamera
+    from detection.hand_detector import HandDetector
     _camera_available = True
 except Exception as e:
     _camera_available = False

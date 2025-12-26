@@ -3,7 +3,7 @@ import time
 import socket
 from server import Server, HOST, PORT
 from client import GameClient, _camera_available, JumpDetector, PoseCamera
-from net import send_json, recv_json
+from game.net import send_json, recv_json
 
 def run_server_auto_start():
     """Run server with automatic world selection"""
