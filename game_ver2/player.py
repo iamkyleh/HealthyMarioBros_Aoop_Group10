@@ -8,9 +8,17 @@ class Player(Entity):
         self.speed: float = 3.5
         self.jump_strength: float = 15.0
     
-    def take_damage(self, his_status, respawn_point):
-        if super().take_damage(his_status):
-            self.x, self.y = respawn_point  # respawn position
+    def take_damage(self, his_status=None, respawn_point=None, from_faction=None):
+        """Handle damage - can be called with his_status (SimpleNamespace) or from_faction (str)"""
+        if from_faction:
+            # Legacy format - create a status object
+            from types import SimpleNamespace
+            his_status = SimpleNamespace(faction=from_faction, direction=1)
+        if his_status and super().take_damage(his_status):
+            if respawn_point:
+                self.x, self.y = respawn_point  # respawn position
+            return True
+        return False
 
     def actuate(self, inp):
         """Process input: move_x is -1, 0, or 1; jump_pressed is bool"""
