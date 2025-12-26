@@ -7,16 +7,16 @@ import threading
 from net import send_json, recv_json
 import addpath
 import time
-from detection.jump_detector import JumpDetector
-from detection.pose_camera import PoseCamera
-from detection.hand_detector import HandDetector
-from detection.attack_detector import AttackDetector
+
 
 try:
     import cv2
-    from jump_detector import JumpDetector
-    from pose_camera import PoseCamera
+    from detection.jump_detector import JumpDetector
+    from detection.pose_camera import PoseCamera
+    from detection.hand_detector import HandDetector
+    from detection.attack_detector import AttackDetector
     _camera_available = True
+
 except Exception as e:
     _camera_available = False
     print(f"[WARN] Camera dependencies unavailable ({e}); running without pose/jump detection.")
@@ -33,7 +33,7 @@ except Exception as e:
         def release(self):
             pass
 
-HOST = "192.168.1.32"
+HOST = "192.168.0.128"
 PORT = 5000
 
 SCREEN_WIDTH = 800
