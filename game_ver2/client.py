@@ -6,11 +6,11 @@ import time
 import threading
 from net import send_json, recv_json
 import addpath
-# Camera-related imports are optional so the game can still run without them
+
 try:
-    import cv2 # pyright: ignore[reportMissingImports]
-    from jump_detector import JumpDetector # pyright: ignore[reportMissingImports]
-    from pose_camera import PoseCamera  # pyright: ignore[reportMissingImports]
+    import cv2
+    from jump_detector import JumpDetector
+    from pose_camera import PoseCamera
     _camera_available = True
 except Exception as e:
     _camera_available = False

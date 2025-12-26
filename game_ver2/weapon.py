@@ -13,6 +13,7 @@ class FireballProjectile(Entity):
         self.life_time = 3.0  # disappear after 3 sec
         self.vel_y = -2.0
         self.damage = 1
+        self.bounce_times = 3
     
     def update(self, platforms, entities):
         """Update fireball position and check collisions"""
@@ -26,12 +27,32 @@ class FireballProjectile(Entity):
         self.vel_y += GRAVITY * 0.3
         self.y += self.vel_y
         
-        # --- platform collision: vanish instantly ---
+        # --- platform collision: bounce instead of vanishing ---
         my_rect = self.rect
         for p in platforms:
             if my_rect.colliderect(p):
-                self.lives = 0
-                return
+                # determine overlap depth to decide horizontal vs vertical collision
+                self.bounce_times -= 1
+                # disappear when no bounces left
+                if self.bounce_times <= 0:
+                    self.lives = 0
+                    return
+                dx = my_rect.centerx - p.centerx
+                dy = my_rect.centery - p.centery
+                overlap_x = (my_rect.width / 2 + p.width / 2) - abs(dx)
+                overlap_y = (my_rect.height / 2 + p.height / 2) - abs(dy)
+                if overlap_x < overlap_y:
+                    # horizontal collision: invert horizontal speed
+                    self.speed = -self.speed
+                    # move out a bit to avoid sticking
+                    self.x += self.speed
+                else:
+                    # vertical collision: invert vertical velocity (bounce)
+                    self.vel_y = -self.vel_y
+                    # nudge out of collision
+                    self.y += self.vel_y
+                # continue checking other platforms
+                continue
         
         # --- hit any entity of different faction ---
         for e in entities:
