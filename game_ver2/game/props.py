@@ -54,4 +54,3 @@ class Flag_final(Props):
 
     def update(self, player_name):
         self.owner_name = player_name
-

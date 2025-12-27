@@ -1,4 +1,4 @@
-from entity import Entity, GRAVITY, FRICTION
+from .entity import Entity, GRAVITY, FRICTION
 
 class Player(Entity):
     def __init__(self, name, rebornpoint, width=24, height=32):

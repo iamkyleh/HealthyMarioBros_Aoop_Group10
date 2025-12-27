@@ -4,17 +4,15 @@ import pygame
 import math
 import time
 import threading
-from net import send_json, recv_json
+from game.net import send_json, recv_json
 import addpath
 import time
-
 
 try:
     import cv2
     from detection.jump_detector import JumpDetector
     from detection.pose_camera import PoseCamera
     from detection.hand_detector import HandDetector
-    from detection.attack_detector import AttackDetector
     _camera_available = True
 
 except Exception as e:
@@ -28,8 +26,33 @@ except Exception as e:
 
     class PoseCamera:
         """Fallback stub camera."""
+        def __init__(self):
+            # provide mp_pose attribute expected by HandDetector.update signature
+            self.mp_pose = None
         def get_frame_and_y(self):
-            return None, None
+            # return (frame, hip_y, pose_landmarks) to match real API
+            return None, None, None
+        def release(self):
+            pass
+    
+    class HandDetector:
+        """Fallback stub when real hand detector is unavailable."""
+        def __init__(self, raise_threshold=50, lower_threshold=35, ema_alpha=0.3):
+            self.raise_threshold = raise_threshold
+            self.lower_threshold = lower_threshold
+            self.ema_alpha = ema_alpha
+
+        def update(self, pose_landmarks, mp_pose):
+            return None
+    
+    class AttackDetector:
+        """Fallback stub when real attack detector is unavailable."""
+        def __init__(self):
+            pass
+
+        def detect_attack(self, frame):
+            return False
+
         def release(self):
             pass
 
@@ -577,6 +600,16 @@ class GameClient:
             self._draw_entities()
             self._draw_props()
             self._draw_status()
+            # Draw win/lose overlay if game ended
+            gs = self.latest_state
+            if gs.get("won"):
+                win_text = self.big_font.render("YOU WIN", True, RED)
+                rect = win_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2))
+                self.screen.blit(win_text, rect)
+            elif gs.get("loose"):
+                lose_text = self.big_font.render("YOU LOSE", True, RED)
+                rect = lose_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2))
+                self.screen.blit(lose_text, rect)
         else:
             # Show waiting message
             waiting_text = self.font.render("Waiting for game state...", True, BLACK)

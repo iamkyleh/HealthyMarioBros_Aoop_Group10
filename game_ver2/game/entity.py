@@ -1,6 +1,4 @@
 # Server-side entity classes (no drawing code)
-from math import factorial
-from nt import DirEntry
 import pygame
 from types import SimpleNamespace
 
@@ -24,7 +22,7 @@ class Entity:
         self.faction: str = 'N'
         # Entity state
         self.lives: int = 1
-    
+
     @property
     def rect(self) -> pygame.Rect:
         """Return pygame.Rect for collision detection"""
@@ -38,12 +36,19 @@ class Entity:
     def status(self):
         s = SimpleNamespace(
             faction = self.faction,
-            direction = self.direction
+            direction = self.direction,
+            can_deal_damage = self.can_deal_damage
         )
         return s
+
+    @property
+    def can_deal_damage(slef) -> bool:
+        return True
     
     def take_damage(self, his_status) -> bool:
         if not self.is_alive:
+            return False
+        if not getattr(his_status, 'can_deal_damage', True):
             return False
         if his_status.faction != self.faction:
             self.lives -= 1

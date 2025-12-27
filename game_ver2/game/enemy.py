@@ -1,4 +1,4 @@
-from entity import Entity
+from .entity import Entity
 import pygame
 
 class Enemy(Entity):

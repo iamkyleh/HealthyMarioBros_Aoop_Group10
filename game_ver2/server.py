@@ -9,11 +9,11 @@ import glob
 # Add parent directory to path to import game_ver1 modules if needed
 # sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from net import send_json, recv_json
-from player import *
-from enemy import *
-from props import *
-from weapon import FireFlower, FireballProjectile
+from game.net import send_json, recv_json
+from game.player import *
+from game.enemy import *
+from game.props import *
+from game.weapon import FireFlower, FireballProjectile
 import addpath
 
 HOST = '0.0.0.0'
@@ -40,6 +40,7 @@ class Game:
         self.players = []
         self.score = 0
         self.won = False
+        self.loose = False
         self.camera_x = 0
         self.pvp_mode = pvp_mode
         self.fireballs = []  # Store all active fireballs
@@ -85,6 +86,22 @@ class Game:
                 cls = enemy_classes[e["type"]]
                 enemy = cls(e["x"], e["y"])
                 self.enemies.append(enemy)
+        # After loading platforms, compute camera bounds
+        self._compute_camera_bounds()
+
+    def _compute_camera_bounds(self):
+        """Compute camera min/max values based on platform extents."""
+        if not self.platforms:
+            self.camera_min = 0
+            self.camera_max = 0
+            return
+        lefts = [p.left for p in self.platforms]
+        rights = [p.right for p in self.platforms]
+        # Minimum camera_x: don't scroll left past the smallest platform left (usually 0)
+        self.camera_min = min(0, min(lefts))
+        # Maximum camera_x: rightmost platform edge minus screen width
+        level_right = max(rights)
+        self.camera_max = max(0, int(level_right - SCREEN_WIDTH))
     
     def add_player(self, name, pvp_mode=False):
         """Add a new player to the game"""
@@ -119,22 +136,34 @@ class Game:
         if alive_count > 0:
             mid //= alive_count
             self.camera_x = int(mid) - SCREEN_WIDTH // 2
-            if self.camera_x < 0:
-                self.camera_x = 0
+            # clamp to computed bounds
+            if hasattr(self, 'camera_min'):
+                if self.camera_x < self.camera_min:
+                    self.camera_x = self.camera_min
+            else:
+                if self.camera_x < 0:
+                    self.camera_x = 0
+            if hasattr(self, 'camera_max') and self.camera_x > self.camera_max:
+                self.camera_x = self.camera_max
     
     def get_player_camera(self, player_name):
         """Get individual camera position for a player (used in PVP mode)"""
         for player in self.players:
             if player.name == player_name and player.is_alive:
                 camera_x = int(player.x) - SCREEN_WIDTH // 2
-                if camera_x < 0:
+                # clamp per-player camera to bounds if available
+                if hasattr(self, 'camera_min') and camera_x < self.camera_min:
+                    camera_x = self.camera_min
+                elif camera_x < 0:
                     camera_x = 0
+                if hasattr(self, 'camera_max') and camera_x > self.camera_max:
+                    camera_x = self.camera_max
                 return camera_x
         return 0
     
     def handle_collisions_and_rules(self):
         """Handle all game rules and collisions"""
-        if self.won:
+        if self.won or self.loose:
             return
 
         for player in self.players:
@@ -186,6 +215,9 @@ class Game:
             # Fell off world
             if player.y > 800:
                 player.take_damage(from_faction='W', respawn_point=self.respawn_point)
+        # Check lose condition: no players alive
+        if not any(p.is_alive for p in self.players):
+            self.loose = True
     
     def update(self, player_inputs):
         """Update game state. player_inputs is a dict mapping player names to input dicts"""
@@ -311,6 +343,8 @@ class Game:
         
         return {
             "status": 1,
+            "won": self.won,
+            "loose": self.loose,
             "player_lives": player_lives_data,
             "score": self.score,
             "entity": entities,
@@ -793,7 +827,8 @@ class Server:
                     self.player_inputs[client_name] = data
                     # Debug: print received input
                     if isinstance(data, dict) and ("move" in data or client_name in data):
-                        print(f"Received input from {client_name}: {data}")
+                        with open("recieve_log.txt", "a") as f:
+                            f.write(f"Received input from {client_name}: {data}")
                 # Observers don't send input, so we ignore their messages
             except (socket.error, OSError, ConnectionError, BrokenPipeError) as e:
                 # Connection error - remove client
@@ -867,8 +902,9 @@ class Server:
                             player_inputs[player_name] = inp
                 
                 # Debug: print collected inputs
-                if player_inputs:
-                    print(f"Collected inputs: {player_inputs}")
+                # if player_inputs:
+                #     with open("input_log.txt", "a") as f:
+                #         f.write(f"Collected inputs: {player_inputs}")
                 
                 # Update game
                 self.game.update(player_inputs)
@@ -892,6 +928,11 @@ class Server:
                 # Remove disconnected clients
                 for sock, player_name in disconnected_clients:
                     self.__remove_client(sock, player_name)
+                # If no players or observers remain, shut down the server
+                if not self.player_sockets and not self.observer_sockets:
+                    print("No clients connected, shutting down server.")
+                    self.shutdown()
+                    break
                 
                 # Frame rate control (60 FPS)
                 elapsed = time.time() - clock
