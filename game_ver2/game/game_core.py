@@ -3,6 +3,7 @@ import time
 import os
 import glob
 import pygame
+import random
 
 from .net import send_json, recv_json
 from .player import *
@@ -388,7 +389,161 @@ class GameAdventure(GAME):
     pass
 
 class GamePVP(GAME):
-    pass
+    def add_player(self, name, pvp_mode=True):
+        """Add a new player in PVP mode and assign unique faction p1, p2, ...
+        Players are spawned with staggered X positions around the respawn point
+        to avoid initial overlap.
+        """
+        player = Player(name, self.respawn_point)
+        # Assign unique faction per player
+        player.faction = f"p{len(self.players) + 1}"
+
+        # Determine staggered spawn X positions: 0, +1, -1, +2, -2, ... times spacing
+        base_x, base_y = self.respawn_point
+        spacing = max(player.width + 8, 48)
+        idx = len(self.players)
+        if idx == 0:
+            mult = 0
+        else:
+            k = (idx + 1) // 2
+            mult = k if (idx % 2 == 1) else -k
+
+        # Small random jitter to avoid exact overlap
+        jitter = random.randint(-10, 10)
+        player.x = base_x + mult * spacing + jitter
+        player.y = base_y
+
+        # Give player a FireFlower weapon
+        player.weapon = FireFlower(owner=player)
+        self.players.append(player)
+        return player
+
+    def _is_valid_respawn(self, x, y, width, height):
+        """Check candidate respawn position is not inside a platform."""
+        rect = pygame.Rect(int(x), int(y), width, height)
+        for p in self.platforms:
+            if rect.colliderect(p):
+                return False
+        return True
+
+    def _far_enough_from_players(self, x, y, min_dist=20):
+        """Ensure candidate (x,y) is at least min_dist from all other players."""
+        for p in self.players:
+            # consider all players (alive or not) to avoid spawn overlap
+            dx = (p.x - x)
+            dy = (p.y - y)
+            if (dx*dx + dy*dy) <= (min_dist * min_dist):
+                return False
+        return True
+
+    def choose_random_respawn(self, dead_player, attempts=50, min_dist=20):
+        """Return a (x,y) respawn point not inside a platform and far from other players.
+        Falls back to the game's default respawn_point if no valid candidate found.
+        """
+        # Determine horizontal bounds from platforms if available
+        if self.platforms:
+            lefts = [p.left for p in self.platforms]
+            rights = [p.right for p in self.platforms]
+            min_x = min(lefts)
+            max_x = max(rights)
+        else:
+            min_x = max_x = int(self.respawn_point[0])
+
+        base_y = int(self.respawn_point[1])
+        width = int(getattr(dead_player, 'width', 24))
+        height = int(getattr(dead_player, 'height', 32))
+
+        for _ in range(attempts):
+            x = random.randint(min_x + 10, max_x - 10) if max_x - min_x > 20 else int(self.respawn_point[0])
+            y = base_y
+            if not self._is_valid_respawn(x, y, width, height):
+                continue
+            if not self._far_enough_from_players(x, y, min_dist=min_dist):
+                continue
+            return (x, y)
+
+        # fallback
+        return tuple(self.respawn_point)
+
+    def handle_collisions_and_rules(self):
+        """Override GAME.handle_collisions_and_rules to provide PVP respawn behavior."""
+        if self.won or self.loose:
+            return
+
+        for player in self.players:
+            if not player.is_alive:
+                continue
+            mrect = player.rect
+
+            # Coins
+            for c in self.coins:
+                if not c.collected and mrect.colliderect(c.rect):
+                    c.collected = True
+                    self.score += 100
+
+            # Enemies
+            for e in self.enemies:
+                if not e.is_alive:
+                    continue
+                if mrect.colliderect(e.rect):
+                    if player.vel_y > 0 and (mrect.bottom - e.rect.top) < 20:
+                        if e.take_damage(his_status=player.status):
+                            self.score += e.points
+                        player.vel_y = -8
+                        player.y -= 5
+                    else:
+                        if e.can_deal_damage:
+                            resp = self.choose_random_respawn(player)
+                            player.take_damage(his_status=e.status, respawn_point=resp)
+
+            # Player-to-player collisions
+            for p in self.players:
+                if p == player or not p.is_alive:
+                    continue
+                # If different factions, handle battle collisions
+                if player.rect.colliderect(p.rect):
+                    # Different faction logic
+                    if player.faction != p.faction:
+                        if player.vel_y > 0 and (mrect.bottom - p.rect.top) < 20:
+                            # player damages other
+                            resp = self.choose_random_respawn(p)
+                            p.take_damage(from_faction=player.faction, respawn_point=resp)
+                            player.vel_y = -8
+                            player.y = p.rect.top - player.height
+                        elif player.vel_y < 0 and (p.rect.bottom - mrect.top) < 20:
+                            resp = self.choose_random_respawn(player)
+                            player.take_damage(from_faction=p.faction, respawn_point=resp)
+                            player.vel_y = 2
+                            player.y = p.rect.bottom
+                        else:
+                            # horizontal collision
+                            resp_p = self.choose_random_respawn(player)
+                            resp_o = self.choose_random_respawn(p)
+                            player.take_damage(from_faction=p.faction, respawn_point=resp_p)
+                            p.take_damage(from_faction=player.faction, respawn_point=resp_o)
+                    else:
+                        # same faction - use base behaviour: push apart / bounce
+                        player.handle_player_collision(p, self.respawn_point)
+
+            # Flags
+            for f in self.flags:
+                if not f.is_checkpoint and mrect.colliderect(f.rect):
+                    f.update(player.name)
+                    self.respawn_point = (f.x, f.y)
+
+            # Final flag
+            if self.flag_final and mrect.colliderect(self.flag_final.rect):
+                self.won = True
+                self.flag_final.update(player.name)
+
+            # Fell off world
+            if player.y > 800:
+                resp = self.choose_random_respawn(player)
+                player.take_damage(from_faction='W', respawn_point=resp)
+
+        # Check lose condition: no players alive
+        if not any(p.is_alive for p in self.players):
+            self.loose = True
 
 class GamePVE(GAME):
     pass

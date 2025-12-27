@@ -383,29 +383,43 @@ class Server:
                             selected_world = worlds[self.selected_world_index]
                             print(f"Player {player_name} confirmed world selection: {sel_cat}/{selected_world}")
                             try:
-                                # Update game PVP mode and reload level
-                                self.game.pvp_mode = self.pvp_mode
-                                # Update all existing players' factions based on PVP mode
-                                for i, p in enumerate(self.game.players):
-                                    if self.pvp_mode:
-                                        p.faction = f"p{i + 1}"
-                                    else:
-                                        p.faction = 'P'
-                                # Try to load the world first (world files are inside category folders)
+                                # Create a new game instance of the appropriate subclass
                                 folder = self.world_folder_map.get(sel_cat, "")
                                 filename = selected_world
-                                # If world file is in a subfolder, construct path accordingly by reloading with folder/filename
-                                # Our Game._load_level uses addpath.world_path which expects name relative to worlds dir
-                                # So pass folder/filename (without .json)
                                 composed_name = f"{folder}/{filename}" if folder else filename
-                                self.game.reload_level(composed_name)
-                                # Only mark as confirmed if loading succeeded
+
+                                # Preserve existing players' basic info (name, lives, is_alive)
+                                existing_players = [(p.name, p.lives, p.is_alive) for p in self.game.players]
+
+                                # Choose class based on selected category
+                                sel_upper = sel_cat.upper()
+                                if sel_upper == "PVP":
+                                    new_game = GamePVP(composed_name, pvp_mode=True)
+                                elif sel_upper == "PVE":
+                                    new_game = GamePVE(composed_name, pvp_mode=False)
+                                else:
+                                    new_game = GameAdventure(composed_name, pvp_mode=False)
+
+                                # Re-add existing players into the new game, preserving lives/state
+                                for pname, plives, pis_alive in existing_players:
+                                    np = new_game.add_player(pname, pvp_mode=(sel_upper == "PVP"))
+                                    try:
+                                        np.lives = plives
+                                        np.is_alive = pis_alive
+                                    except Exception:
+                                        pass
+
+                                # Replace game instance
+                                self.game = new_game
+
+                                # Mark selection confirmed and broadcast
                                 self.world_selection_confirmed = True
                                 self.__broadcast_world_selection_update()
+
                                 # Start game after a short delay
                                 time.sleep(0.5)
                                 self.game_started = True
-                                print(f"Game starting with world: {selected_world}, PVP mode: {self.pvp_mode}")
+                                print(f"Game starting with world: {selected_world}, mode: {sel_cat}")
                                 break
                             except Exception as e:
                                 print(f"Error loading world {selected_world}: {e}")

@@ -8,5 +8,7 @@
   ],
   "Flags": [],
   "Coins": [],
-  "Enemies": []
+  "Enemies": [
+    {"type": "KoopaTroopa", "x":520, "y":420}
+  ]
 }
