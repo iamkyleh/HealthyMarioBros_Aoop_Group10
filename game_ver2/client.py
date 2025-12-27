@@ -33,7 +33,7 @@ except Exception as e:
         def release(self):
             pass
 
-HOST = "192.168.0.128"
+HOST = "127.0.0.1"
 PORT = 5000
 
 SCREEN_WIDTH = 800
@@ -127,6 +127,10 @@ class GameClient:
         self._load_img()
         
         self._init_networking()
+
+        self.ui_step = 0  # 0: world select, 1: difficulty (if PvP)
+        self.difficulty_levels = ["easy", "medium", "hard"]
+        self.selected_difficulty = 1  # Default to medium
 
     # -------------------- Networking ------------------------
     def _init_networking(self):
@@ -285,20 +289,27 @@ class GameClient:
             if event.type == pygame.QUIT:
                 self.running = False
             elif event.type == pygame.KEYDOWN and self.world_selection_mode and self.role == "P":
-                # Handle world selection input
-                if event.key == pygame.K_UP or event.key == pygame.K_w:
-                    # Move up (previous world)
-                    self._send_world_selection_move(-1)
-                elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
-                    # Move down (next world)
-                    self._send_world_selection_move(1)
-                elif event.key == pygame.K_v:
-                    # Toggle PVP mode
-                    self._toggle_pvp_mode()
-                elif event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
-                    # Confirm world selection
-                    self._confirm_world_selection()
-    
+                # Step 1: world selection
+                if self.ui_step == 0:
+                    if event.key == pygame.K_UP or event.key == pygame.K_w:
+                        self.selected_world_index = (self.selected_world_index - 1) % len(self.available_worlds)
+                    elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
+                        self.selected_world_index = (self.selected_world_index + 1) % len(self.available_worlds)
+                    elif event.key == pygame.K_RETURN:
+                        # If PvP Arena selected, go to difficulty selection
+                        if self.available_worlds[self.selected_world_index].lower() == "pvp_arena":
+                            self.ui_step = 1
+                        else:
+                            self._confirm_world_selection()  # Start game directly for World1/World2
+                # Step 2: AI difficulty selection
+                elif self.ui_step == 1:
+                    if event.key == pygame.K_LEFT:
+                        self.selected_difficulty = (self.selected_difficulty - 1) % len(self.difficulty_levels)
+                    elif event.key == pygame.K_RIGHT:
+                        self.selected_difficulty = (self.selected_difficulty + 1) % len(self.difficulty_levels)
+                    elif event.key == pygame.K_RETURN:
+                        self._confirm_world_selection()
+
     def _send_world_selection_move(self, direction):
         """Send world selection movement to server"""
         if self.s is None or not self.running:
@@ -314,21 +325,14 @@ class GameClient:
         # Input is handled in _handle_events via KEYDOWN events
         pass
     
-    def _toggle_pvp_mode(self):
-        """Toggle PVP mode"""
-        if self.s is None or not self.running:
-            return
-        try:
-            send_json(self.s, {"world_selection": {"toggle_pvp": True}})
-        except Exception as e:
-            print(f"Error toggling PVP mode: {e}")
-    
     def _confirm_world_selection(self):
         """Confirm world selection"""
         if self.s is None or not self.running:
             return
         try:
-            send_json(self.s, {"world_selection": {"confirm": True}})
+            world = self.available_worlds[self.selected_world_index]
+            is_pvp = world.lower() == "pvp_arena"
+            send_json(self.s, {"world_selection": {"confirm": True, "selected_world": world, "pvp_mode": is_pvp, "ai_difficulty": self.difficulty_levels[self.selected_difficulty] if is_pvp else None}})
         except Exception as e:
             print(f"Error confirming world selection: {e}")
     
@@ -469,90 +473,34 @@ class GameClient:
             pygame.quit()
 
     def _draw_world_selection(self):
-        """Draw world selection screen"""
         self.screen.fill(SKY_BLUE)
-        
-        # Draw cloud background
-        for i in range(10):
-            cx = (i * 200) % (SCREEN_WIDTH + 100) - 50
-            cy = 80 + (i % 3) * 30
-            self._draw_cloud(cx, cy)
-        
-        # Draw background (world preview) - use current selected world's platforms if available
-        if self.platforms and len(self.platforms.get("brick", [])) > 0:
-            # Draw platforms as background
-            camera_x = 0  # Static camera for selection screen
-            for b in self.platforms["brick"]:
-                rect = pygame.Rect(b["x"], b["y"], b["w"], b["h"])
-                draw_tiled(self.screen, self.image["Brick"], rect, camera_x)
-            for p in self.platforms["pipe"]:
-                self.screen.blit(self.image["Pipe"], (p["x"] - camera_x, p["y"]))
-        
-        # Draw semi-transparent overlay
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-        overlay.set_alpha(180)
-        overlay.fill(BLACK)
-        self.screen.blit(overlay, (0, 0))
-        
-        # Draw world selection text
         center_x = SCREEN_WIDTH // 2
         center_y = SCREEN_HEIGHT // 2
-        
-        # Floating animation
-        float_offset = int(10 * math.sin(self.world_selection_animation_time * 0.1))
-        
-        # Draw all available worlds with selected one highlighted
-        if len(self.available_worlds) > 0:
-            y_start = center_y - (len(self.available_worlds) * 40) // 2
-            
-            for i, world_name in enumerate(self.available_worlds):
-                y_pos = y_start + i * 60 + float_offset
-                
-                # Highlight selected world
-                if i == self.selected_world_index:
-                    # Draw selection indicator
-                    indicator_text = self.big_font.render(">", True, WHITE)
-                    self.screen.blit(indicator_text, (center_x - 150, y_pos - 20))
-                    indicator_text = self.big_font.render("<", True, WHITE)
-                    self.screen.blit(indicator_text, (center_x + 100, y_pos - 20))
-                    
-                    # Draw selected world name larger
-                    world_text = self.big_font.render(world_name.upper(), True, WHITE)
-                    text_rect = world_text.get_rect(center=(center_x, y_pos))
-                    self.screen.blit(world_text, text_rect)
-                else:
-                    # Draw other worlds smaller and dimmed
-                    world_text = self.font.render(world_name.upper(), True, (200, 200, 200))
-                    text_rect = world_text.get_rect(center=(center_x, y_pos))
-                    self.screen.blit(world_text, text_rect)
-        else:
-            # No worlds available
-            no_worlds_text = self.font.render("No worlds available", True, WHITE)
-            text_rect = no_worlds_text.get_rect(center=(center_x, center_y))
-            self.screen.blit(no_worlds_text, text_rect)
-        
-        # Draw PVP mode status
-        pvp_text = self.font.render(f"PVP Mode: {'ON' if self.pvp_mode else 'OFF'} (Press V to toggle)", True, WHITE)
-        pvp_rect = pvp_text.get_rect(center=(center_x, SCREEN_HEIGHT - 100))
-        self.screen.blit(pvp_text, pvp_rect)
-        
-        # Draw PVP mode status
-        pvp_text = self.font.render(f"PVP Mode: {'ON' if self.pvp_mode else 'OFF'} (Press V to toggle)", True, WHITE)
-        pvp_rect = pvp_text.get_rect(center=(center_x, SCREEN_HEIGHT - 100))
-        self.screen.blit(pvp_text, pvp_rect)
-        
-        # Draw instructions
-        if self.role == "P":
-            instruction_text = self.font.render("Use UP/DOWN arrows to navigate, ENTER to confirm", True, WHITE)
+        # Draw world list
+        y_start = center_y - (len(self.available_worlds) * 40) // 2
+        for i, world_name in enumerate(self.available_worlds):
+            y_pos = y_start + i * 60
+            if i == self.selected_world_index:
+                world_text = self.big_font.render(world_name.upper(), True, WHITE)
+            else:
+                world_text = self.font.render(world_name.upper(), True, (200, 200, 200))
+            text_rect = world_text.get_rect(center=(center_x, y_pos))
+            self.screen.blit(world_text, text_rect)
+        # Step 1: world selection
+        if self.ui_step == 0:
+            instruction_text = self.font.render("Use UP/DOWN to select world, ENTER to confirm", True, WHITE)
             inst_rect = instruction_text.get_rect(center=(center_x, SCREEN_HEIGHT - 50))
             self.screen.blit(instruction_text, inst_rect)
-        else:
-            instruction_text = self.font.render("Waiting for players to select world...", True, WHITE)
+        # Step 2: AI difficulty selection (if PvP Arena)
+        elif self.ui_step == 1:
+            diff_text = self.font.render(f"AI Difficulty: {self.difficulty_levels[self.selected_difficulty]} (LEFT/RIGHT)", True, RED)
+            diff_rect = diff_text.get_rect(center=(center_x, center_y + 120))
+            self.screen.blit(diff_text, diff_rect)
+            instruction_text = self.font.render("Use LEFT/RIGHT to choose, ENTER to start", True, WHITE)
             inst_rect = instruction_text.get_rect(center=(center_x, SCREEN_HEIGHT - 50))
             self.screen.blit(instruction_text, inst_rect)
-        
         pygame.display.flip()
-    
+
     def _draw(self):
         self.screen.fill(SKY_BLUE)
         # --- CLOUD BACKGROUND ---
@@ -663,12 +611,20 @@ class GameClient:
             self.screen.blit(scaled_img, (x, y))
     
     def _draw_status(self):
-        y = 16
+        # Always show Mario and Luigi at top left, stacked vertically
+        y = 8
+        for pname in ["Mario", "Luigi"]:
+            lives = self.latest_state["player_lives"].get(pname, None)
+            if lives is not None:
+                test = self.font.render(f"{pname} X {lives}", True, BLACK)
+                self.screen.blit(test, (16, y))
+                y += self.font.get_linesize()
+        # Show other players (if any)
         for p_name, p_status in self.latest_state["player_lives"].items():
-            test = self.font.render(f"{p_name} X {p_status}", True, BLACK)
-            self.screen.blit(test, (16, y))
-            y += self.font.get_linesize()
-
+            if p_name not in ["Mario", "Luigi"]:
+                test = self.font.render(f"{p_name} X {p_status}", True, BLACK)
+                self.screen.blit(test, (16, y))
+                y += self.font.get_linesize()
         score_text = self.font.render(f"Score: {self.latest_state['score']}", True, BLACK)
         self.screen.blit(score_text, (650, 16))
 
