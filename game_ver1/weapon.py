@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 import pygame
 import time
-from entity import Entity
+from entity import Entity, GRAVITY
 
 class Weapon(ABC):
     def __init__(self, owner=None):
@@ -20,7 +20,7 @@ class Weapon(ABC):
     
     def attack(self):
         if self.can_attack():
-            self.update_attack_time(self)
+            self.update_attack_time()
             self.attak_effects()
 
     @abstractmethod
@@ -47,7 +47,7 @@ class FireBall(Weapon):
         fb_x = self.owner.x + (self.owner.width // 2) + self.owner.direction * 12
         fb_y = self.owner.y + self.owner.height // 3
 
-        fb = FireBall(fb_x, fb_y, self.owner.direction, self.owner.faction)
+        fb = Fireball_projectile(fb_x, fb_y, self.owner.direction, self.owner.faction)
         self.projectiles.append(fb)
         return [fb]
 

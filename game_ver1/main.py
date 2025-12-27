@@ -89,11 +89,30 @@ class Game:
         with open(addpath.world_path(f"{filename}.json")) as f:
             data = json.load(f)
             platforms, flag, coins, enemies = [], [], [], []
-            platforms.extend([pygame.Rect(p["x"], p["y"], p["w"], p["h"]) for p in data["Platforms"]])
-            flag.extend([Flag(f["x"], f["y"]) for f in data["Flags"]])
-            flag_final = Flag_final(data["Flag_final"]["x"], data["Flag_final"]["y"])
-            coins.extend([Coin(c["x"], c["y"]) for c in data["Coins"]])
-            enemies.extend([Goomba(e["x"], e["y"]) for e in data["Goombas"]])
+            for p in data.get("Platforms", []):
+                platforms.append(pygame.Rect(p["x"], p["y"], p["w"], p["h"]))
+            for ff in data.get("Flags", []):
+                flag.append(Flag(ff["x"], ff["y"]))
+            if "Flag_final" in data:
+                flag_final = Flag_final(data["Flag_final"]["x"], data["Flag_final"]["y"])
+            else:
+                flag_final = None
+            for c in data.get("Coins", []):
+                coins.append(Coin(c["x"], c["y"]))
+
+            # Support both old "Goombas" key and newer "Enemies" list with types
+            if "Goombas" in data:
+                for e in data["Goombas"]:
+                    enemies.append(Goomba(e["x"], e["y"]))
+            else:
+                for e in data.get("Enemies", []):
+                    etype = e.get("type", "Goomba")
+                    if etype == "Goomba":
+                        enemies.append(Goomba(e["x"], e["y"]))
+                    else:
+                        # fallback to Goomba for unknown types
+                        enemies.append(Goomba(e.get("x", 0), e.get("y", 0)))
+
             return platforms, flag, flag_final, coins, enemies
     
     def draw_cloud(self, x, y):
@@ -108,11 +127,10 @@ class Game:
             self.draw_cloud(cx, cy)
 
     def update_camera(self):
-        mid = 0
-        for player in self.player:
-            if player.is_alive:
-                mid += player.x
-        mid //= len(self.player)
+        xs = [int(p.x) for p in self.player if p.is_alive]
+        if not xs:
+            return
+        mid = sum(xs) // len(xs)
         self.camera_x = int(mid) - SCREEN_WIDTH // 2
         if self.camera_x < 0:
             self.camera_x = 0
