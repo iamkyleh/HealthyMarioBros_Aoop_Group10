@@ -13,6 +13,7 @@ try:
     from detection.jump_detector import JumpDetector
     from detection.pose_camera import PoseCamera
     from detection.hand_detector import HandDetector
+    from detection.attack_detector import AttackDetector
     _camera_available = True
 
 except Exception as e:
