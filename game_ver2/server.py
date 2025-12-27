@@ -13,7 +13,7 @@ from game.net import send_json, recv_json
 from game.player import *
 from game.enemy import *
 from game.props import *
-from weapon import FireFlower, FireballProjectile
+from game.weapon import FireFlower, FireballProjectile
 import addpath
 
 HOST = '0.0.0.0'
@@ -40,6 +40,7 @@ class Game:
         self.players = []
         self.score = 0
         self.won = False
+        self.loose = False
         self.camera_x = 0
         self.pvp_mode = pvp_mode
         self.fireballs = []  # Store all active fireballs
