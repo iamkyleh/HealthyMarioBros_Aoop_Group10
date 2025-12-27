@@ -827,7 +827,8 @@ class Server:
                     self.player_inputs[client_name] = data
                     # Debug: print received input
                     if isinstance(data, dict) and ("move" in data or client_name in data):
-                        print(f"Received input from {client_name}: {data}")
+                        with open("recieve_log.txt", "a") as f:
+                            f.write(f"Received input from {client_name}: {data}")
                 # Observers don't send input, so we ignore their messages
             except (socket.error, OSError, ConnectionError, BrokenPipeError) as e:
                 # Connection error - remove client
