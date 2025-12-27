@@ -391,4 +391,115 @@ class GamePVP(GAME):
     pass
 
 class GamePVE(GAME):
-    pass
+    def __init__(self, filename="world1", pvp_mode=False):
+        super().__init__(filename, pvp_mode=False)
+        # PvE: Mario (human) vs Luigi (AI)
+        self.players = []
+        self.score = 0
+        self.won = False
+        self.loose = False
+        self.camera_x = 0
+        self.fireballs = []
+        # Add Mario (human)
+        mario = Player("Mario", self.respawn_point)
+        mario.faction = "P"
+        mario.weapon = FireFlower(owner=mario)
+        self.players.append(mario)
+        # Add Luigi (AI)
+        luigi = Player("Luigi", self.respawn_point)
+        luigi.faction = "E"  # Enemy faction for PvE
+        luigi.weapon = FireFlower(owner=luigi)
+        self.players.append(luigi)
+        # RL agent setup
+        self._init_rl_agent()
+
+    def _init_rl_agent(self):
+        # Try to load RL agent if available
+        try:
+            from stable_baselines3 import PPO
+            import numpy as np
+            self.rl_model = PPO.load("mario_pvp_ai.zip")
+            self.np = np
+        except Exception as e:
+            print("[GamePVE] RL agent not loaded:", e)
+            self.rl_model = None
+            self.np = None
+
+    def update(self, player_inputs):
+        """Update game state. player_inputs is a dict mapping player names to input dicts"""
+        if self.won:
+            return
+
+        # Human Mario input
+        mario = next((p for p in self.players if p.name == "Mario"), None)
+        luigi = next((p for p in self.players if p.name == "Luigi"), None)
+        if mario and mario.name in player_inputs:
+            inp = player_inputs[mario.name]
+            mario.update(self.platforms, inp)
+            if inp.get("attack", False) and hasattr(mario, 'weapon'):
+                fireball = mario.weapon.attack()
+                if fireball:
+                    self.fireballs.append(fireball)
+
+        # RL Luigi input (AI)
+        if luigi and self.rl_model is not None and self.np is not None and luigi.is_alive:
+            obs = self._get_rl_observation(mario, luigi)
+            action, _ = self.rl_model.predict(obs, deterministic=True)
+            ai_inp = self._action_to_input(action)
+            luigi.update(self.platforms, ai_inp)
+            if ai_inp.get("attack", False) and hasattr(luigi, 'weapon'):
+                fireball = luigi.weapon.attack()
+                if fireball:
+                    self.fireballs.append(fireball)
+        elif luigi and luigi.is_alive:
+            # Fallback: stand still
+            luigi.update(self.platforms, {"move": 0, "jump": False, "attack": False})
+
+        # Update fireballs
+        all_entities = list(self.players) + list(self.enemies)
+        for fb in self.fireballs[:]:
+            if fb.is_alive:
+                fb.update(self.platforms, all_entities)
+            if not fb.is_alive:
+                self.fireballs.remove(fb)
+
+        # Update enemies
+        for e in self.enemies:
+            e.update(self.platforms)
+
+        # Update coins
+        for c in self.coins:
+            c.update()
+
+        # Handle collisions
+        self.handle_collisions_and_rules()
+
+        # Update camera
+        self.update_camera()
+
+        # Score to lives conversion
+        if self.score / 1000 >= 1:
+            for p in self.players:
+                p.lives += self.score // 1000
+            self.score = self.score % 1000
+
+    def _get_rl_observation(self, mario, luigi):
+        # Example: simple observation (positions, velocities)
+        obs = [mario.x, mario.y, mario.vel_x, mario.vel_y, luigi.x, luigi.y, luigi.vel_x, luigi.vel_y]
+        return self.np.array(obs, dtype=self.np.float32)
+
+    def _action_to_input(self, action):
+        # Example: map discrete action to input dict
+        # 0: left, 1: right, 2: jump, 3: attack, 4: idle
+        if isinstance(action, (list, self.np.ndarray)):
+            action = int(action[0])
+        if action == 0:
+            return {"move": -1, "jump": False, "attack": False}
+        elif action == 1:
+            return {"move": 1, "jump": False, "attack": False}
+        elif action == 2:
+            return {"move": 0, "jump": True, "attack": False}
+        elif action == 3:
+            return {"move": 0, "jump": False, "attack": True}
+        else:
+            return {"move": 0, "jump": False, "attack": False}
