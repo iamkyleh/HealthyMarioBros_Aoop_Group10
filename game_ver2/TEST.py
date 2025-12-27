@@ -7,58 +7,8 @@ from game.net import send_json, recv_json
 
 def run_server_auto_start():
     """Run server with automatic world selection"""
-    # Create server instance
-    server = Server.__new__(Server)
-    
-    # Initialize server manually
-    import threading as th
-    import os
-    import glob
-    import addpath
-    
-    # Socket tracking
-    server.player_sockets = []
-    server.observer_sockets = []
-    server.player_inputs = {}
-    server.player_names = {}
-    server.player_to_socket = {}
-    server.observer_names = {}
-    
-    # World selection state
-    world_dir = addpath.world_path("")
-    world_files = glob.glob(os.path.join(world_dir, "world*.json"))
-    worlds = []
-    for wf in sorted(world_files):
-        basename = os.path.basename(wf)
-        if basename.startswith("world") and basename.endswith(".json"):
-            world_name = basename[:-5]
-            worlds.append(world_name)
-    server.available_worlds = worlds if worlds else ["world1"]
-    server.selected_world_index = 0
-    server.world_selection_confirmed = False
-    
-    # Initialize game
-    from server import Game
-    server.game = Game(server.available_worlds[0] if server.available_worlds else "world1")
-    server.available_names = ["MushroomRetainer", "Mario", "Luigi"]
-    server.running = True
-    server.game_started = False
-    
-    # Initialize network
-    server._Server__init_network()
-    
-    # Start accepting players in background
-    server.player_accept_thread = th.Thread(target=server._Server__accept_players, daemon=True)
-    server.player_accept_thread.start()
-    
-    # Wait for world selection (will be handled by client)
-    print("Waiting for world selection...")
-    while not server.game_started and server.running:
-        time.sleep(0.1)
-    
-    if server.game_started:
-        server._Server__start_game_loop()
-    
+    # Instantiate Server directly (lets Server initializer perform its own setup)
+    server = Server()
     return server
 
 def run_client():

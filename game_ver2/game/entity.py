@@ -1,6 +1,4 @@
 # Server-side entity classes (no drawing code)
-from math import factorial
-from nt import DirEntry
 import pygame
 from types import SimpleNamespace
 
@@ -24,7 +22,7 @@ class Entity:
         self.faction: str = 'N'
         # Entity state
         self.lives: int = 1
-    
+
     @property
     def rect(self) -> pygame.Rect:
         """Return pygame.Rect for collision detection"""

@@ -85,6 +85,22 @@ class Game:
                 cls = enemy_classes[e["type"]]
                 enemy = cls(e["x"], e["y"])
                 self.enemies.append(enemy)
+        # After loading platforms, compute camera bounds
+        self._compute_camera_bounds()
+
+    def _compute_camera_bounds(self):
+        """Compute camera min/max values based on platform extents."""
+        if not self.platforms:
+            self.camera_min = 0
+            self.camera_max = 0
+            return
+        lefts = [p.left for p in self.platforms]
+        rights = [p.right for p in self.platforms]
+        # Minimum camera_x: don't scroll left past the smallest platform left (usually 0)
+        self.camera_min = min(0, min(lefts))
+        # Maximum camera_x: rightmost platform edge minus screen width
+        level_right = max(rights)
+        self.camera_max = max(0, int(level_right - SCREEN_WIDTH))
     
     def add_player(self, name, pvp_mode=False):
         """Add a new player to the game"""
@@ -119,16 +135,28 @@ class Game:
         if alive_count > 0:
             mid //= alive_count
             self.camera_x = int(mid) - SCREEN_WIDTH // 2
-            if self.camera_x < 0:
-                self.camera_x = 0
+            # clamp to computed bounds
+            if hasattr(self, 'camera_min'):
+                if self.camera_x < self.camera_min:
+                    self.camera_x = self.camera_min
+            else:
+                if self.camera_x < 0:
+                    self.camera_x = 0
+            if hasattr(self, 'camera_max') and self.camera_x > self.camera_max:
+                self.camera_x = self.camera_max
     
     def get_player_camera(self, player_name):
         """Get individual camera position for a player (used in PVP mode)"""
         for player in self.players:
             if player.name == player_name and player.is_alive:
                 camera_x = int(player.x) - SCREEN_WIDTH // 2
-                if camera_x < 0:
+                # clamp per-player camera to bounds if available
+                if hasattr(self, 'camera_min') and camera_x < self.camera_min:
+                    camera_x = self.camera_min
+                elif camera_x < 0:
                     camera_x = 0
+                if hasattr(self, 'camera_max') and camera_x > self.camera_max:
+                    camera_x = self.camera_max
                 return camera_x
         return 0
     
