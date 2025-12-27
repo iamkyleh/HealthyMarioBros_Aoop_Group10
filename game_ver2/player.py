@@ -7,14 +7,24 @@ class Player(Entity):
         self.lives: int = 3
         self.speed: float = 3.5
         self.jump_strength: float = 15.0
+        self.respawn_cooldown = 0.0  # seconds remaining
+        self.last_death_time = 0.0
     
+    def can_be_damaged(self):
+        import time
+        return (time.time() - self.last_death_time) > self.respawn_cooldown
+
     def take_damage(self, his_status=None, respawn_point=None, from_faction=None):
-        """Handle damage - can be called with his_status (SimpleNamespace) or from_faction (str)"""
+        import time
+        if not self.can_be_damaged():
+            return False
         if from_faction:
             # Legacy format - create a status object
             from types import SimpleNamespace
             his_status = SimpleNamespace(faction=from_faction, direction=1)
         if his_status and super().take_damage(his_status):
+            self.last_death_time = time.time()
+            self.respawn_cooldown = 2.0  # 2 seconds cooldown after death
             if respawn_point:
                 self.x, self.y = respawn_point  # respawn position
             return True
