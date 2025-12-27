@@ -599,6 +599,16 @@ class GameClient:
             self._draw_entities()
             self._draw_props()
             self._draw_status()
+            # Draw win/lose overlay if game ended
+            gs = self.latest_state
+            if gs.get("won"):
+                win_text = self.big_font.render("YOU WIN", True, RED)
+                rect = win_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2))
+                self.screen.blit(win_text, rect)
+            elif gs.get("loose"):
+                lose_text = self.big_font.render("YOU LOSE", True, RED)
+                rect = lose_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2))
+                self.screen.blit(lose_text, rect)
         else:
             # Show waiting message
             waiting_text = self.font.render("Waiting for game state...", True, BLACK)

@@ -163,7 +163,7 @@ class Game:
     
     def handle_collisions_and_rules(self):
         """Handle all game rules and collisions"""
-        if self.won:
+        if self.won or self.loose:
             return
 
         for player in self.players:
@@ -215,6 +215,9 @@ class Game:
             # Fell off world
             if player.y > 800:
                 player.take_damage(from_faction='W', respawn_point=self.respawn_point)
+        # Check lose condition: no players alive
+        if not any(p.is_alive for p in self.players):
+            self.loose = True
     
     def update(self, player_inputs):
         """Update game state. player_inputs is a dict mapping player names to input dicts"""
@@ -340,6 +343,8 @@ class Game:
         
         return {
             "status": 1,
+            "won": self.won,
+            "loose": self.loose,
             "player_lives": player_lives_data,
             "score": self.score,
             "entity": entities,
@@ -922,6 +927,11 @@ class Server:
                 # Remove disconnected clients
                 for sock, player_name in disconnected_clients:
                     self.__remove_client(sock, player_name)
+                # If no players or observers remain, shut down the server
+                if not self.player_sockets and not self.observer_sockets:
+                    print("No clients connected, shutting down server.")
+                    self.shutdown()
+                    break
                 
                 # Frame rate control (60 FPS)
                 elapsed = time.time() - clock

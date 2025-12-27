@@ -36,7 +36,8 @@ class Entity:
     def status(self):
         s = SimpleNamespace(
             faction = self.faction,
-            direction = self.direction
+            direction = self.direction,
+            can_deal_damage = self.can_deal_damage
         )
         return s
 
@@ -47,7 +48,7 @@ class Entity:
     def take_damage(self, his_status) -> bool:
         if not self.is_alive:
             return False
-        if not his_status.can_deal_damage:
+        if not getattr(his_status, 'can_deal_damage', True):
             return False
         if his_status.faction != self.faction:
             self.lives -= 1

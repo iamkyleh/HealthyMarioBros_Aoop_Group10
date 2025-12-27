@@ -63,7 +63,7 @@ class FireballProjectile(Entity):
             if e.faction != self.faction and my_rect.colliderect(e.rect):
                 # Create a status object for damage dealing
                 from types import SimpleNamespace
-                fireball_status = SimpleNamespace(faction=self.faction, direction=self.direction)
+                fireball_status = SimpleNamespace(faction=self.faction, direction=self.direction, can_deal_damage=True)
                 e.take_damage(fireball_status)
                 self.lives = 0
                 return
