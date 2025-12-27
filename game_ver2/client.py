@@ -335,9 +335,6 @@ class GameClient:
                     # Go back to category selection from world list
                     if self.world_selection_level == 1:
                         self.world_selection_level = 0
-                elif event.key == pygame.K_v:
-                    # Toggle PVP mode
-                    self._toggle_pvp_mode()
                 elif event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
                     # If currently choosing category, enter world list; otherwise confirm
                     if self.world_selection_level == 0:
@@ -370,13 +367,7 @@ class GameClient:
         pass
     
     def _toggle_pvp_mode(self):
-        """Toggle PVP mode"""
-        if self.s is None or not self.running:
-            return
-        try:
-            send_json(self.s, {"world_selection": {"toggle_pvp": True}})
-        except Exception as e:
-            print(f"Error toggling PVP mode: {e}")
+        pass
     
     def _confirm_world_selection(self):
         """Confirm world selection"""
@@ -629,15 +620,7 @@ class GameClient:
                     text_rect = no_worlds_text.get_rect(center=(center_x, center_y))
                     self.screen.blit(no_worlds_text, text_rect)
         
-        # Draw PVP mode status
-        pvp_text = self.font.render(f"PVP Mode: {'ON' if self.pvp_mode else 'OFF'} (Press V to toggle)", True, WHITE)
-        pvp_rect = pvp_text.get_rect(center=(center_x, SCREEN_HEIGHT - 100))
-        self.screen.blit(pvp_text, pvp_rect)
-        
-        # Draw PVP mode status
-        pvp_text = self.font.render(f"PVP Mode: {'ON' if self.pvp_mode else 'OFF'} (Press V to toggle)", True, WHITE)
-        pvp_rect = pvp_text.get_rect(center=(center_x, SCREEN_HEIGHT - 100))
-        self.screen.blit(pvp_text, pvp_rect)
+        # Mode label removed per request
         
         # Draw instructions
         if self.role == "P":

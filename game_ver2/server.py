@@ -693,12 +693,8 @@ class Server:
                     # Handle world selection navigation
                     if "world_selection" in data:
                         ws_input = data["world_selection"]
-                        if "toggle_pvp" in ws_input and ws_input["toggle_pvp"]:
-                            # Toggle PVP mode
-                            self.pvp_mode = not self.pvp_mode
-                            print(f"PVP mode {'enabled' if self.pvp_mode else 'disabled'} by {player_name}")
-                            self.__broadcast_world_selection_update()
-                        elif "move" in ws_input:
+                        # 'toggle_pvp' removed: PVP is determined by selected category
+                        if "move" in ws_input:
                             # Up/down navigation. Client should send level: "category" or "world"
                             level = ws_input.get("level", "category")
                             if level == "category":
