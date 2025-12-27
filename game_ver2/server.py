@@ -14,6 +14,7 @@ from player import *
 from enemy import *
 from props import *
 from weapon import FireFlower, FireballProjectile
+from rl_agent import AIPlayer, RLAgent
 import addpath
 
 HOST = '0.0.0.0'
@@ -32,7 +33,7 @@ enemy_classes = {
 }
 
 class Game:
-    def __init__(self, filename="world1", pvp_mode=False):
+    def __init__(self, filename="world1", pvp_mode=False, ai_difficulty='medium'):
         self.respawn_point = (80, 400)
         self.filename = filename
         self.platforms, self.flags, self.flag_final, self.coins, self.enemies = [], [], None, [], []
@@ -43,6 +44,14 @@ class Game:
         self.camera_x = 0
         self.pvp_mode = pvp_mode
         self.fireballs = []  # Store all active fireballs
+        self.ai_agent = None
+        self.ai_player = None
+        self.ai_difficulty = ai_difficulty
+
+        # Initialize AI agent for PvP mode
+        if pvp_mode:
+            self.ai_agent = RLAgent(difficulty=ai_difficulty)
+            self.ai_agent.load_model()  # Try to load existing model
     
     def reload_level(self, filename):
         """Reload level with new filename"""
@@ -88,16 +97,22 @@ class Game:
     
     def add_player(self, name, pvp_mode=False):
         """Add a new player to the game"""
-        player = Player(name, self.respawn_point)
-        # Set faction based on PVP mode
-        if pvp_mode:
-            # Assign unique faction for each player in PVP mode
-            player.faction = f"p{len(self.players) + 1}"
+        # Always assign Mario to human, Luigi to AI
+        if pvp_mode and len([p for p in self.players if not isinstance(p, AIPlayer)]) == 0:
+            player = Player("Mario", self.respawn_point)
+            player.faction = "p1"
+            player.weapon = FireFlower(owner=player)
+            self.players.append(player)
+        elif pvp_mode and self.ai_player is None:
+            self.ai_player = AIPlayer("Luigi", (600, 400), self.ai_agent)
+            self.ai_player.faction = "p2"
+            self.ai_player.weapon = FireFlower(owner=self.ai_player)
+            self.players.append(self.ai_player)
         else:
-            player.faction = 'P'  # All players same faction in co-op
-        # Give player a FireFlower weapon
-        player.weapon = FireFlower(owner=player)
-        self.players.append(player)
+            player = Player(name, self.respawn_point)
+            player.faction = 'P'
+            player.weapon = FireFlower(owner=player)
+            self.players.append(player)
         return player
     
     def update_camera(self):
@@ -191,6 +206,13 @@ class Game:
         """Update game state. player_inputs is a dict mapping player names to input dicts"""
         if self.won:
             return
+
+        # Add AI input if AI player exists
+        if self.ai_player and self.ai_player.is_alive:
+            human_players = [p for p in self.players if not isinstance(p, AIPlayer) and p.is_alive]
+            if human_players:
+                ai_input = self.ai_player.get_ai_input(self, human_players[0])
+                player_inputs[self.ai_player.name] = ai_input
         
         # Update players and handle fireball attacks
         for player in self.players:
@@ -239,8 +261,8 @@ class Game:
         entities = {}
         for player in self.players:
             if player.is_alive:
-                # In PVP mode, use individual camera, otherwise use shared camera
-                if self.pvp_mode:
+                # Use individual camera if multiple players (PvP style)
+                if len([p for p in self.players if p.is_alive]) > 1:
                     player_camera_x = self.get_player_camera(player.name)
                     entities[player.name] = {
                         "x": float(player.x - player_camera_x),
@@ -302,9 +324,9 @@ class Game:
         for p in self.players:
             player_lives_data[f"{p.name}"] = p.lives
         
-        # In PVP mode, send individual camera positions for each player
+        # Send individual camera positions if multiple players
         player_cameras = {}
-        if self.pvp_mode:
+        if len([p for p in self.players if p.is_alive]) > 1:
             for player in self.players:
                 if player.is_alive:
                     player_cameras[player.name] = self.get_player_camera(player.name)
@@ -320,8 +342,8 @@ class Game:
                 "flag_final": flag_final_data
             },
             "camera_x": self.camera_x,
-            "pvp_mode": self.pvp_mode,
-            "player_cameras": player_cameras if self.pvp_mode else {}
+            "pvp_mode": len([p for p in self.players if p.is_alive]) > 1,
+            "player_cameras": player_cameras if player_cameras else {}
         }
     
     def get_init_dict(self):
@@ -385,6 +407,7 @@ class Server:
         self.available_names = ["Mario", "Luigi", "MushroomRetainer"]
         self.running = True
         self.game_started = False
+        self.ai_difficulty = 'medium'  # Default difficulty
         self.__init_network()
         # Start accepting players in background while waiting for world selection
         self.player_accept_thread = threading.Thread(target=self.__accept_players, daemon=True)
@@ -409,11 +432,12 @@ class Server:
         """Get list of available world files"""
         world_dir = addpath.world_path("")
         world_files = glob.glob(os.path.join(world_dir, "world*.json"))
+        world_files.extend(glob.glob(os.path.join(world_dir, "pvp*.json")))
         worlds = []
         for wf in sorted(world_files):
             basename = os.path.basename(wf)
-            # Extract world number (e.g., "world1.json" -> "world1")
-            if basename.startswith("world") and basename.endswith(".json"):
+            # Extract world name (e.g., "world1.json" -> "world1", "pvp_arena.json" -> "pvp_arena")
+            if basename.endswith(".json"):
                 world_name = basename[:-5]  # Remove .json extension
                 worlds.append(world_name)
         return worlds if worlds else ["world1"]  # Default to world1 if none found
@@ -639,47 +663,29 @@ class Server:
                                 self.selected_world_index = (self.selected_world_index + 1) % len(self.available_worlds)
                                 self.__broadcast_world_selection_update()
                         elif "confirm" in ws_input and ws_input["confirm"]:
-                            # Confirm world selection and start game
-                            selected_world = self.available_worlds[self.selected_world_index]
-                            print(f"Player {player_name} confirmed world selection: {selected_world}")
-                            try:
-                                # Update game PVP mode and reload level
-                                self.game.pvp_mode = self.pvp_mode
-                                # Update all existing players' factions based on PVP mode
-                                for i, p in enumerate(self.game.players):
-                                    if self.pvp_mode:
-                                        p.faction = f"p{i + 1}"
-                                    else:
-                                        p.faction = 'P'
-                                # Try to load the world first
-                                self.game.reload_level(selected_world)
-                                # Only mark as confirmed if loading succeeded
-                                self.world_selection_confirmed = True
-                                self.__broadcast_world_selection_update()
-                                # Start game after a short delay
-                                time.sleep(0.5)
-                                self.game_started = True
-                                print(f"Game starting with world: {selected_world}, PVP mode: {self.pvp_mode}")
-                                break
-                            except Exception as e:
-                                print(f"Error loading world {selected_world}: {e}")
-                                import traceback
-                                traceback.print_exc()
-                                # Send error message back to client
-                                error_msg = {
-                                    "world_selection": {
-                                        "available_worlds": self.available_worlds,
-                                        "selected_index": self.selected_world_index,
-                                        "confirmed": False,
-                                        "error": f"Failed to load world: {e}"
-                                    }
-                                }
-                                try:
-                                    send_json(sock, error_msg)
-                                except:
-                                    pass
-                                # Don't break, allow retry
-                                continue
+                            selected_world = ws_input.get("selected_world", self.available_worlds[self.selected_world_index])
+                            is_pvp = ws_input.get("pvp_mode", False)
+                            ai_difficulty = ws_input.get("ai_difficulty", "medium")
+                            self.set_ai_difficulty(ai_difficulty)
+                            print(f"World: {selected_world}, PvP: {is_pvp}, AI diff: {ai_difficulty}")
+                            # Only enable PvP if world is PvP Arena and pvp_mode is True
+                            if selected_world.lower() == "pvp_arena" and is_pvp:
+                                self.pvp_mode = True
+                            else:
+                                self.pvp_mode = False
+                            self.game.pvp_mode = self.pvp_mode
+                            self.game.ai_difficulty = ai_difficulty
+                            # Try to load the world first
+                            self.game.reload_level(selected_world)
+                            # Only mark as confirmed if loading succeeded
+                            self.world_selection_confirmed = True
+                            self.__broadcast_world_selection_update()
+                            # Start game after a short delay
+                            import time
+                            time.sleep(0.5)
+                            self.game_started = True
+                            print(f"Game starting with world: {selected_world}, PVP mode: {self.pvp_mode}")
+                            break
             except (socket.error, OSError, ConnectionError, BrokenPipeError) as e:
                 print(f"Error receiving world selection input from {player_name}: {e}")
                 break
