@@ -28,9 +28,9 @@ except Exception as e:
         def __init__(self):
             # provide mp_pose attribute expected by HandDetector.update signature
             self.mp_pose = None
-
         def get_frame_and_y(self):
-            return None, None
+            # return (frame, hip_y, pose_landmarks) to match real API
+            return None, None, None
         def release(self):
             pass
     
@@ -43,6 +43,17 @@ except Exception as e:
 
         def update(self, pose_landmarks, mp_pose):
             return None
+    
+    class AttackDetector:
+        """Fallback stub when real attack detector is unavailable."""
+        def __init__(self):
+            pass
+
+        def detect_attack(self, frame):
+            return False
+
+        def release(self):
+            pass
 
 HOST = "192.168.1.32"
 PORT = 5000
