@@ -14,6 +14,7 @@ try:
     from detection.pose_camera import PoseCamera
     from detection.hand_detector import HandDetector
     _camera_available = True
+
 except Exception as e:
     _camera_available = False
     print(f"[WARN] Camera dependencies unavailable ({e}); running without pose/jump detection.")
@@ -55,7 +56,7 @@ except Exception as e:
         def release(self):
             pass
 
-HOST = "192.168.1.32"
+HOST = "192.168.0.128"
 PORT = 5000
 
 SCREEN_WIDTH = 800
