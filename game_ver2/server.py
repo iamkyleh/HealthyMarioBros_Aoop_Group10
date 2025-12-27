@@ -26,6 +26,9 @@ START_TIME = time.time()*1000
 def now():
     return time.time()*1000
 
+# Idle timeout (seconds) for no player connections at server start
+IDLE_TIMEOUT = 60
+
 enemy_classes = {
     "Goomba": Goomba,
     "KoopaTroopa": KoopaTroopa,
@@ -496,6 +499,7 @@ class Server:
         print("Waiting for players to connect...")
         self.server.settimeout(1.0)  # Check for start command every second
         player_count = 0
+        server_start_time = time.time()
         
         while not self.game_started and self.running:
             try:
@@ -508,7 +512,6 @@ class Server:
                 conn.settimeout(5.0)  # 5 second timeout for role assignment
                 
                 # Small delay to ensure connection is fully established
-                import time
                 time.sleep(0.05)  # 50ms delay
                 
                 # Wait for client to send their role
@@ -544,6 +547,8 @@ class Server:
                         self.player_sockets.append(conn)
                         player_count += 1
                         print(f"  Assigned name: {player_name}")
+                        # update last connection time
+                        server_start_time = time.time()
                     else:
                         print(f"  Maximum players reached, disconnecting")
                         conn.close()
@@ -591,6 +596,11 @@ class Server:
                     
             except socket.timeout:
                 # Timeout is expected - check for start command
+                # If no players have connected within idle timeout, shut down
+                if player_count == 0 and (time.time() - server_start_time) > IDLE_TIMEOUT:
+                    print(f"No players connected within {IDLE_TIMEOUT}s, shutting down server.")
+                    self.shutdown()
+                    break
                 pass
             except Exception as e:
                 print(f"Error accepting player: {e}")
@@ -660,7 +670,6 @@ class Server:
                 conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 conn.settimeout(5.0)
                 
-                import time
                 time.sleep(0.05)
                 
                 # Wait for role message
