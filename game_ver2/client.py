@@ -141,6 +141,11 @@ class GameClient:
         self.world_selection_confirmed = False
         self.world_selection_animation_time = 0
         self.pvp_mode = False
+        # Two-level selection state: 0 = category, 1 = world
+        self.world_selection_level = 0
+        self.available_categories = []
+        self.available_worlds_by_category = {}
+        self.selected_category_index = 0
         
         # PVP mode camera (individual per player)
         self.pvp_camera_x = 0
@@ -200,11 +205,23 @@ class GameClient:
                     self.role = msg["role"]
                 if "world_selection" in msg:
                     ws = msg["world_selection"]
-                    self.available_worlds = ws.get("available_worlds", [])
-                    self.selected_world_index = ws.get("selected_index", 0)
-                    self.world_selection_confirmed = ws.get("confirmed", False)
-                    if self.world_selection_confirmed:
-                        self.world_selection_mode = False
+                    # New two-level format
+                    if "categories" in ws:
+                        self.available_categories = ws.get("categories", [])
+                        self.available_worlds_by_category = ws.get("worlds", {})
+                        self.selected_category_index = ws.get("selected_category_index", 0)
+                        self.selected_world_index = ws.get("selected_world_index", 0)
+                        self.pvp_mode = ws.get("pvp_mode", False)
+                        self.world_selection_confirmed = ws.get("confirmed", False)
+                        if self.world_selection_confirmed:
+                            self.world_selection_mode = False
+                    else:
+                        # Fallback to old format
+                        self.available_worlds = ws.get("available_worlds", [])
+                        self.selected_world_index = ws.get("selected_index", 0)
+                        self.world_selection_confirmed = ws.get("confirmed", False)
+                        if self.world_selection_confirmed:
+                            self.world_selection_mode = False
                 role_name = "player" if self.role == "P" else "observer"
                 print(f"Connected as {role_name}" + (f" ({self.name})" if self.name else ""))
             else:
@@ -309,24 +326,40 @@ class GameClient:
             elif event.type == pygame.KEYDOWN and self.world_selection_mode and self.role == "P":
                 # Handle world selection input
                 if event.key == pygame.K_UP or event.key == pygame.K_w:
-                    # Move up (previous world)
-                    self._send_world_selection_move(-1)
+                    # Move up (previous)
+                    self._send_world_selection_move(-1, level=self.world_selection_level)
                 elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
-                    # Move down (next world)
-                    self._send_world_selection_move(1)
+                    # Move down (next)
+                    self._send_world_selection_move(1, level=self.world_selection_level)
+                elif event.key == pygame.K_BACKSPACE:
+                    # Go back to category selection from world list
+                    if self.world_selection_level == 1:
+                        self.world_selection_level = 0
                 elif event.key == pygame.K_v:
                     # Toggle PVP mode
                     self._toggle_pvp_mode()
                 elif event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
-                    # Confirm world selection
-                    self._confirm_world_selection()
+                    # If currently choosing category, enter world list; otherwise confirm
+                    if self.world_selection_level == 0:
+                        self.world_selection_level = 1
+                    else:
+                        self._confirm_world_selection()
     
     def _send_world_selection_move(self, direction):
         """Send world selection movement to server"""
+        # kept for backward compatibility
+        self._send_world_selection_move(direction, level="category")
+
+    def _send_world_selection_move(self, direction, level=0):
+        """Send world selection movement to server. level: 0/category or 1/world or string"""
         if self.s is None or not self.running:
             return
+        if isinstance(level, int):
+            lvl_str = "category" if level == 0 else "world"
+        else:
+            lvl_str = level if isinstance(level, str) else "category"
         try:
-            send_json(self.s, {"world_selection": {"move": direction}})
+            send_json(self.s, {"world_selection": {"move": direction, "level": lvl_str}})
         except Exception as e:
             print(f"Error sending world selection input: {e}")
 
@@ -426,19 +459,37 @@ class GameClient:
                 # Handle world selection updates
                 if "world_selection" in msg:
                     ws = msg["world_selection"]
-                    self.available_worlds = ws.get("available_worlds", [])
-                    self.selected_world_index = ws.get("selected_index", 0)
-                    self.world_selection_confirmed = ws.get("confirmed", False)
-                    self.pvp_mode = ws.get("pvp_mode", False)
-                    if self.world_selection_confirmed:
-                        self.world_selection_mode = False
-                        # Update platforms if provided
-                        if "platform" in msg:
-                            self.platforms = msg["platform"]
-                        if "flag" in msg:
-                            self.flags = msg["flag"]
-                        if "flag_final" in msg:
-                            self.flag_final = msg["flag_final"]
+                    # New two-level format
+                    if "categories" in ws:
+                        self.available_categories = ws.get("categories", [])
+                        self.available_worlds_by_category = ws.get("worlds", {})
+                        self.selected_category_index = ws.get("selected_category_index", 0)
+                        self.selected_world_index = ws.get("selected_world_index", 0)
+                        self.world_selection_confirmed = ws.get("confirmed", False)
+                        self.pvp_mode = ws.get("pvp_mode", False)
+                        if self.world_selection_confirmed:
+                            self.world_selection_mode = False
+                            # Update platforms if provided
+                            if "platform" in msg:
+                                self.platforms = msg["platform"]
+                            if "flag" in msg:
+                                self.flags = msg["flag"]
+                            if "flag_final" in msg:
+                                self.flag_final = msg["flag_final"]
+                    else:
+                        # Fallback to old format
+                        self.available_worlds = ws.get("available_worlds", [])
+                        self.selected_world_index = ws.get("selected_index", 0)
+                        self.world_selection_confirmed = ws.get("confirmed", False)
+                        self.pvp_mode = ws.get("pvp_mode", False)
+                        if self.world_selection_confirmed:
+                            self.world_selection_mode = False
+                            if "platform" in msg:
+                                self.platforms = msg["platform"]
+                            if "flag" in msg:
+                                self.flags = msg["flag"]
+                            if "flag_final" in msg:
+                                self.flag_final = msg["flag_final"]
                 
                 # Handle game state updates
                 if "status" in msg:  # Check if it's a state update
@@ -523,35 +574,60 @@ class GameClient:
         # Floating animation
         float_offset = int(10 * math.sin(self.world_selection_animation_time * 0.1))
         
-        # Draw all available worlds with selected one highlighted
-        if len(self.available_worlds) > 0:
-            y_start = center_y - (len(self.available_worlds) * 40) // 2
-            
-            for i, world_name in enumerate(self.available_worlds):
-                y_pos = y_start + i * 60 + float_offset
-                
-                # Highlight selected world
-                if i == self.selected_world_index:
-                    # Draw selection indicator
-                    indicator_text = self.big_font.render(">", True, WHITE)
-                    self.screen.blit(indicator_text, (center_x - 150, y_pos - 20))
-                    indicator_text = self.big_font.render("<", True, WHITE)
-                    self.screen.blit(indicator_text, (center_x + 100, y_pos - 20))
-                    
-                    # Draw selected world name larger
-                    world_text = self.big_font.render(world_name.upper(), True, WHITE)
-                    text_rect = world_text.get_rect(center=(center_x, y_pos))
-                    self.screen.blit(world_text, text_rect)
-                else:
-                    # Draw other worlds smaller and dimmed
-                    world_text = self.font.render(world_name.upper(), True, (200, 200, 200))
-                    text_rect = world_text.get_rect(center=(center_x, y_pos))
-                    self.screen.blit(world_text, text_rect)
+        # Draw categories or worlds depending on selection level
+        cats = self.available_categories
+        if not cats:
+            # fallback to single list
+            if len(self.available_worlds) > 0:
+                y_start = center_y - (len(self.available_worlds) * 40) // 2
+                for i, world_name in enumerate(self.available_worlds):
+                    y_pos = y_start + i * 60 + float_offset
+                    if i == self.selected_world_index:
+                        world_text = self.big_font.render(world_name.upper(), True, WHITE)
+                        text_rect = world_text.get_rect(center=(center_x, y_pos))
+                        self.screen.blit(world_text, text_rect)
+                    else:
+                        world_text = self.font.render(world_name.upper(), True, (200, 200, 200))
+                        text_rect = world_text.get_rect(center=(center_x, y_pos))
+                        self.screen.blit(world_text, text_rect)
+            else:
+                no_worlds_text = self.font.render("No worlds available", True, WHITE)
+                text_rect = no_worlds_text.get_rect(center=(center_x, center_y))
+                self.screen.blit(no_worlds_text, text_rect)
         else:
-            # No worlds available
-            no_worlds_text = self.font.render("No worlds available", True, WHITE)
-            text_rect = no_worlds_text.get_rect(center=(center_x, center_y))
-            self.screen.blit(no_worlds_text, text_rect)
+            if self.world_selection_level == 0:
+                # show categories only
+                y_start_c = center_y - (len(cats) * 40) // 2
+                for i, cat in enumerate(cats):
+                    y_pos = y_start_c + i * 60 + float_offset
+                    if i == self.selected_category_index:
+                        cat_text = self.big_font.render(cat.upper(), True, WHITE)
+                        text_rect = cat_text.get_rect(center=(center_x, y_pos))
+                        self.screen.blit(cat_text, text_rect)
+                    else:
+                        cat_text = self.font.render(cat, True, (200, 200, 200))
+                        text_rect = cat_text.get_rect(center=(center_x, y_pos))
+                        self.screen.blit(cat_text, text_rect)
+            else:
+                # show worlds for selected category
+                sel_cat = cats[self.selected_category_index]
+                worlds = self.available_worlds_by_category.get(sel_cat, [])
+                if worlds:
+                    y_start_w = center_y - (len(worlds) * 40) // 2
+                    for j, wname in enumerate(worlds):
+                        y_pos = y_start_w + j * 60 + float_offset
+                        if j == self.selected_world_index:
+                            world_text = self.big_font.render(wname.upper(), True, WHITE)
+                            text_rect = world_text.get_rect(center=(center_x, y_pos))
+                            self.screen.blit(world_text, text_rect)
+                        else:
+                            world_text = self.font.render(wname, True, (200, 200, 200))
+                            text_rect = world_text.get_rect(center=(center_x, y_pos))
+                            self.screen.blit(world_text, text_rect)
+                else:
+                    no_worlds_text = self.font.render("No worlds in this category", True, WHITE)
+                    text_rect = no_worlds_text.get_rect(center=(center_x, center_y))
+                    self.screen.blit(no_worlds_text, text_rect)
         
         # Draw PVP mode status
         pvp_text = self.font.render(f"PVP Mode: {'ON' if self.pvp_mode else 'OFF'} (Press V to toggle)", True, WHITE)
@@ -565,7 +641,10 @@ class GameClient:
         
         # Draw instructions
         if self.role == "P":
-            instruction_text = self.font.render("Use UP/DOWN arrows to navigate, ENTER to confirm", True, WHITE)
+            if self.world_selection_level == 0:
+                instruction_text = self.font.render("Use UP/DOWN to choose category, ENTER to open", True, WHITE)
+            else:
+                instruction_text = self.font.render("Use UP/DOWN to choose world, ENTER to confirm, BACKSPACE to go back", True, WHITE)
             inst_rect = instruction_text.get_rect(center=(center_x, SCREEN_HEIGHT - 50))
             self.screen.blit(instruction_text, inst_rect)
         else:

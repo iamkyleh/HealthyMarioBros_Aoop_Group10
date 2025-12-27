@@ -409,13 +409,35 @@ class Server:
         self.observer_names = {}  # Maps observer socket -> label
 
         # World selection state
+        # Two-level world selection: categories -> worlds in folder
+        # Categories map to subfolders under worlds/: world_advanture, world_PVP, world_PVE
+        self.world_categories = ["Advanture", "PVP", "PVE"]
+        self.world_folder_map = {"Advanture": "world_advanture", "PVP": "world_PVP", "PVE": "world_PVE"}
         self.available_worlds = self.__get_available_worlds()
-        self.selected_world_index = 0  # Start with first world
+        self.selected_category_index = 0
+        self.selected_world_index = 0  # Start with first world in selected category
         self.world_selection_confirmed = False
         self.pvp_mode = False  # PVP mode toggle
         
         # Initialize game with default world (will be reloaded when confirmed)
-        self.game = Game(self.available_worlds[0] if self.available_worlds else "world1", pvp_mode=False)
+        # Prefer Adventure default: worlds/world_advanture/world1.json if present
+        adv_folder = self.world_folder_map.get("Advanture", "world_advanture")
+        preferred = f"{adv_folder}/world1"
+        try:
+            if os.path.exists(addpath.world_path(f"{preferred}.json")):
+                default_world = preferred
+            else:
+                # Pick first available world from first category if exists
+                default_world = "world1"
+                try:
+                    first_cat = list(self.available_worlds.keys())[0]
+                    if self.available_worlds.get(first_cat):
+                        default_world = self.available_worlds[first_cat][0]
+                except Exception:
+                    pass
+        except Exception:
+            default_world = "world1"
+        self.game = Game(default_world, pvp_mode=False)
         self.available_names = ["Mario", "Luigi", "MushroomRetainer"]
         self.running = True
         self.game_started = False
@@ -441,16 +463,24 @@ class Server:
     
     def __get_available_worlds(self):
         """Get list of available world files"""
-        world_dir = addpath.world_path("")
-        world_files = glob.glob(os.path.join(world_dir, "world*.json"))
-        worlds = []
-        for wf in sorted(world_files):
-            basename = os.path.basename(wf)
-            # Extract world number (e.g., "world1.json" -> "world1")
-            if basename.startswith("world") and basename.endswith(".json"):
-                world_name = basename[:-5]  # Remove .json extension
-                worlds.append(world_name)
-        return worlds if worlds else ["world1"]  # Default to world1 if none found
+        worlds_by_cat = {}
+        root = addpath.world_path("")
+        for cat in self.world_categories:
+            folder = self.world_folder_map.get(cat)
+            worlds_by_cat[cat] = []
+            if not folder:
+                continue
+            folder_path = addpath.world_path(folder)
+            try:
+                files = glob.glob(os.path.join(folder_path, "*.json"))
+                for wf in sorted(files):
+                    basename = os.path.basename(wf)
+                    if basename.endswith('.json'):
+                        worlds_by_cat[cat].append(basename[:-5])
+            except Exception:
+                # Missing folder -> empty list
+                pass
+        return worlds_by_cat
     
     def __init_network(self):
         """Initialize network socket"""
@@ -527,8 +557,10 @@ class Server:
                         "platform": init_dict["platform"],
                         "player_name": player_name,
                         "world_selection": {
-                            "available_worlds": self.available_worlds,
-                            "selected_index": self.selected_world_index,
+                            "categories": list(self.available_worlds.keys()),
+                            "worlds": self.available_worlds,
+                            "selected_category_index": self.selected_category_index,
+                            "selected_world_index": self.selected_world_index,
                             "confirmed": self.world_selection_confirmed,
                             "pvp_mode": self.pvp_mode
                         }
@@ -583,8 +615,10 @@ class Server:
                     "role": "O",
                     "platform": init_dict["platform"],
                     "world_selection": {
-                        "available_worlds": self.available_worlds,
-                        "selected_index": self.selected_world_index,
+                        "categories": list(self.available_worlds.keys()),
+                        "worlds": self.available_worlds,
+                        "selected_category_index": self.selected_category_index,
+                        "selected_world_index": self.selected_world_index,
                         "confirmed": self.world_selection_confirmed
                     }
                 }
@@ -665,17 +699,44 @@ class Server:
                             print(f"PVP mode {'enabled' if self.pvp_mode else 'disabled'} by {player_name}")
                             self.__broadcast_world_selection_update()
                         elif "move" in ws_input:
-                            # Up/down navigation
-                            if ws_input["move"] == -1:  # Up (previous world)
-                                self.selected_world_index = (self.selected_world_index - 1) % len(self.available_worlds)
+                            # Up/down navigation. Client should send level: "category" or "world"
+                            level = ws_input.get("level", "category")
+                            if level == "category":
+                                cats = list(self.available_worlds.keys())
+                                if not cats:
+                                    continue
+                                if ws_input["move"] == -1:
+                                    self.selected_category_index = (self.selected_category_index - 1) % len(cats)
+                                elif ws_input["move"] == 1:
+                                    self.selected_category_index = (self.selected_category_index + 1) % len(cats)
+                                # reset world index when category changes
+                                self.selected_world_index = 0
                                 self.__broadcast_world_selection_update()
-                            elif ws_input["move"] == 1:  # Down (next world)
-                                self.selected_world_index = (self.selected_world_index + 1) % len(self.available_worlds)
+                            else:
+                                # world level
+                                cats = list(self.available_worlds.keys())
+                                if not cats:
+                                    continue
+                                sel_cat = cats[self.selected_category_index]
+                                worlds = self.available_worlds.get(sel_cat, [])
+                                if not worlds:
+                                    continue
+                                if ws_input["move"] == -1:
+                                    self.selected_world_index = (self.selected_world_index - 1) % len(worlds)
+                                elif ws_input["move"] == 1:
+                                    self.selected_world_index = (self.selected_world_index + 1) % len(worlds)
                                 self.__broadcast_world_selection_update()
                         elif "confirm" in ws_input and ws_input["confirm"]:
                             # Confirm world selection and start game
-                            selected_world = self.available_worlds[self.selected_world_index]
-                            print(f"Player {player_name} confirmed world selection: {selected_world}")
+                            cats = list(self.available_worlds.keys())
+                            if not cats:
+                                continue
+                            sel_cat = cats[self.selected_category_index]
+                            worlds = self.available_worlds.get(sel_cat, [])
+                            if not worlds:
+                                continue
+                            selected_world = worlds[self.selected_world_index]
+                            print(f"Player {player_name} confirmed world selection: {sel_cat}/{selected_world}")
                             try:
                                 # Update game PVP mode and reload level
                                 self.game.pvp_mode = self.pvp_mode
@@ -685,8 +746,14 @@ class Server:
                                         p.faction = f"p{i + 1}"
                                     else:
                                         p.faction = 'P'
-                                # Try to load the world first
-                                self.game.reload_level(selected_world)
+                                # Try to load the world first (world files are inside category folders)
+                                folder = self.world_folder_map.get(sel_cat, "")
+                                filename = selected_world
+                                # If world file is in a subfolder, construct path accordingly by reloading with folder/filename
+                                # Our Game._load_level uses addpath.world_path which expects name relative to worlds dir
+                                # So pass folder/filename (without .json)
+                                composed_name = f"{folder}/{filename}" if folder else filename
+                                self.game.reload_level(composed_name)
                                 # Only mark as confirmed if loading succeeded
                                 self.world_selection_confirmed = True
                                 self.__broadcast_world_selection_update()
@@ -702,8 +769,10 @@ class Server:
                                 # Send error message back to client
                                 error_msg = {
                                     "world_selection": {
-                                        "available_worlds": self.available_worlds,
-                                        "selected_index": self.selected_world_index,
+                                        "categories": list(self.available_worlds.keys()),
+                                        "worlds": self.available_worlds,
+                                        "selected_category_index": self.selected_category_index,
+                                        "selected_world_index": self.selected_world_index,
                                         "confirmed": False,
                                         "error": f"Failed to load world: {e}"
                                     }
@@ -725,9 +794,12 @@ class Server:
         """Broadcast world selection state to all clients"""
         update_msg = {
             "world_selection": {
-                "available_worlds": self.available_worlds,
-                "selected_index": self.selected_world_index,
-                "confirmed": self.world_selection_confirmed
+                "categories": list(self.available_worlds.keys()),
+                "worlds": self.available_worlds,
+                "selected_category_index": self.selected_category_index,
+                "selected_world_index": self.selected_world_index,
+                "confirmed": self.world_selection_confirmed,
+                "pvp_mode": self.pvp_mode
             }
         }
         
