@@ -25,10 +25,24 @@ except Exception as e:
 
     class PoseCamera:
         """Fallback stub camera."""
+        def __init__(self):
+            # provide mp_pose attribute expected by HandDetector.update signature
+            self.mp_pose = None
+
         def get_frame_and_y(self):
             return None, None
         def release(self):
             pass
+    
+    class HandDetector:
+        """Fallback stub when real hand detector is unavailable."""
+        def __init__(self, raise_threshold=50, lower_threshold=35, ema_alpha=0.3):
+            self.raise_threshold = raise_threshold
+            self.lower_threshold = lower_threshold
+            self.ema_alpha = ema_alpha
+
+        def update(self, pose_landmarks, mp_pose):
+            return None
 
 HOST = "192.168.1.32"
 PORT = 5000

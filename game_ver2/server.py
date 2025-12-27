@@ -867,8 +867,9 @@ class Server:
                             player_inputs[player_name] = inp
                 
                 # Debug: print collected inputs
-                if player_inputs:
-                    print(f"Collected inputs: {player_inputs}")
+                # if player_inputs:
+                #     with open("input_log.txt", "a") as f:
+                #         f.write(f"Collected inputs: {player_inputs}")
                 
                 # Update game
                 self.game.update(player_inputs)

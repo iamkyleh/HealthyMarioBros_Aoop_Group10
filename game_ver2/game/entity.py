@@ -41,9 +41,15 @@ class Entity:
             direction = self.direction
         )
         return s
+
+    @property
+    def can_deal_damage(slef) -> bool:
+        return True
     
     def take_damage(self, his_status) -> bool:
         if not self.is_alive:
+            return False
+        if not his_status.can_deal_damage:
             return False
         if his_status.faction != self.faction:
             self.lives -= 1
