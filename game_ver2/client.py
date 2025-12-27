@@ -7,10 +7,6 @@ import threading
 from game.net import send_json, recv_json
 import addpath
 import time
-from detection.jump_detector import JumpDetector
-from detection.pose_camera import PoseCamera
-from detection.hand_detector import HandDetector
-from detection.attack_detector import AttackDetector
 
 try:
     import cv2
