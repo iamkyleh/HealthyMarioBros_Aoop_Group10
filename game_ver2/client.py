@@ -56,7 +56,7 @@ except Exception as e:
         def release(self):
             pass
 
-HOST = "192.168.0.128"
+HOST = "192.168.1.32"
 PORT = 5000
 
 SCREEN_WIDTH = 800
