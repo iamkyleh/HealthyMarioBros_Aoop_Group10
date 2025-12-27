@@ -22,7 +22,7 @@ enemy_classes = {
 
 class GAME:
     """Base GAME class (copied from server.Game)."""
-    def __init__(self, filename="world1", pvp_mode=False):
+    def __init__(self, filename="world1"):
         self.respawn_point = (80, 400)
         self.filename = filename
         self.platforms, self.flags, self.flag_final, self.coins, self.enemies = [], [], None, [], []
@@ -32,7 +32,7 @@ class GAME:
         self.won = False
         self.loose = False
         self.camera_x = 0
-        self.pvp_mode = pvp_mode
+        self.pvp_mode = False
         self.fireballs = []  # Store all active fireballs
 
     def reload_level(self, filename):
@@ -93,15 +93,14 @@ class GAME:
         level_right = max(rights)
         self.camera_max = max(0, int(level_right - SCREEN_WIDTH))
 
-    def add_player(self, name, pvp_mode=False):
-        """Add a new player to the game"""
+    def add_player(self, name):
+        """Add a new player to the game. Faction determined by game mode."""
         player = Player(name, self.respawn_point)
-        # Set faction based on PVP mode
-        if pvp_mode:
-            # Assign unique faction for each player in PVP mode
+        # Set faction based on game mode
+        if getattr(self, 'pvp_mode', False):
             player.faction = f"p{len(self.players) + 1}"
         else:
-            player.faction = 'P'  # All players same faction in co-op
+            player.faction = 'P'
         # Give player a FireFlower weapon
         player.weapon = FireFlower(owner=player)
         self.players.append(player)
@@ -386,16 +385,22 @@ class GAME:
 
 # Child classes for modes - currently identical, provided for future overrides
 class GameAdventure(GAME):
-    pass
+    def __init__(self, filename="world1"):
+        super().__init__(filename)
+        self.pvp_mode = False
 
 class GamePVP(GAME):
-    def add_player(self, name, pvp_mode=True):
+    def __init__(self, filename="world1"):
+        super().__init__(filename)
+        self.pvp_mode = True
+
+    def add_player(self, name):
         """Add a new player in PVP mode and assign unique faction p1, p2, ...
         Players are spawned with staggered X positions around the respawn point
         to avoid initial overlap.
         """
         player = Player(name, self.respawn_point)
-        # Assign unique faction per player
+        # Assign unique faction per player (pvp mode)
         player.faction = f"p{len(self.players) + 1}"
 
         # Determine staggered spawn X positions: 0, +1, -1, +2, -2, ... times spacing
@@ -546,4 +551,6 @@ class GamePVP(GAME):
             self.loose = True
 
 class GamePVE(GAME):
-    pass
+    def __init__(self, filename="world1"):
+        super().__init__(filename)
+        self.pvp_mode = False

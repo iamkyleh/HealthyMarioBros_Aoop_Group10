@@ -80,7 +80,7 @@ class Server:
         except Exception:
             default_world = "world1"
         # Instantiate a mode-specific game class. Default to Adventure mode.
-        self.game = GameAdventure(default_world, pvp_mode=False)
+        self.game = GameAdventure(default_world)
         self.available_names = ["Mario", "Luigi", "MushroomRetainer"]
         self.running = True
         self.game_started = False
@@ -181,7 +181,7 @@ class Server:
                     # Assign name and add to game
                     if player_count < len(self.available_names):
                         player_name = self.available_names[player_count]
-                        self.game.add_player(player_name, pvp_mode=self.pvp_mode)
+                        self.game.add_player(player_name)
                         self.player_to_socket[player_name] = conn
                         self.player_names[conn] = player_name
                         self.player_sockets.append(conn)
@@ -394,15 +394,15 @@ class Server:
                                 # Choose class based on selected category
                                 sel_upper = sel_cat.upper()
                                 if sel_upper == "PVP":
-                                    new_game = GamePVP(composed_name, pvp_mode=True)
+                                    new_game = GamePVP(composed_name)
                                 elif sel_upper == "PVE":
-                                    new_game = GamePVE(composed_name, pvp_mode=False)
+                                    new_game = GamePVE(composed_name)
                                 else:
-                                    new_game = GameAdventure(composed_name, pvp_mode=False)
+                                    new_game = GameAdventure(composed_name)
 
                                 # Re-add existing players into the new game, preserving lives/state
                                 for pname, plives, pis_alive in existing_players:
-                                    np = new_game.add_player(pname, pvp_mode=(sel_upper == "PVP"))
+                                    np = new_game.add_player(pname)
                                     try:
                                         np.lives = plives
                                         np.is_alive = pis_alive
