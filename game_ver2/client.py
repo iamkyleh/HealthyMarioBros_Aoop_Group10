@@ -264,8 +264,9 @@ class GameClient:
         while self.running:
             frame, hip_y, pose_landmarks = self.pose_camera.get_frame_and_y()
             if frame is None:
-                break
-            
+                time.sleep(0.01)
+                continue
+
             # Check for jump detection
             if self.jump_detector.update(hip_y):
                 self.pose_jump_detected = True
@@ -288,6 +289,7 @@ class GameClient:
             # Add count overlays
             cv2.putText(frame, f"Jumps: {self.jump_count}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
             cv2.putText(frame, f"Attacks: {self.attack_count}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            cv2.putText(frame, f"Move: {hand_move or 'none'}", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
             
             # Display camera feed
             cv2.imshow("Pose Detection", frame)
