@@ -75,6 +75,6 @@ class KoopaTroopa(Enemy):
             self.x += 10
             return True
         elif self.name == "KoopaTroopaShell" and his_status.faction != self.faction:
-            self.vel_x = 0 if self.vel_x == 5 else his_status.vel_x * 5
+            self.vel_x = 0 if self.vel_x == 5 else his_status.direction * 5
             return True
         return False

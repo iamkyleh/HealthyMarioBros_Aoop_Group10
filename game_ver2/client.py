@@ -57,7 +57,11 @@ except Exception as e:
         def release(self):
             pass
 
-HOST = "140.113.66.6"
+<<<<<<< HEAD
+HOST = "140.113.66.15"
+=======
+HOST = "140.113.66.15"
+>>>>>>> 00b4ac7f287b4673cfb3c1de6bf834031781dbf3
 PORT = 5000
 
 SCREEN_WIDTH = 800
