@@ -57,24 +57,25 @@ class GAME:
                 self.platforms.append(pygame.Rect(p["x"], p["y"], p["w"], p["h"]))
 
             # Load flags
-            if "Flags" in data:
+            if "Flags" in data and data["Flags"]:
                 for f in data["Flags"]:
                     self.flags.append(Flag(f["x"], f["y"]))
 
             # Load final flag
-            if "Flag_final" in data:
+            if "Flag_final" in data and data["Flag_final"]:
                 self.flag_final = Flag_final(data["Flag_final"]["x"], data["Flag_final"]["y"])
 
             # Load coins
-            if "Coins" in data:
+            if "Coins" in data and data["Coins"]:
                 for c in data["Coins"]:
                     self.coins.append(Coin(c["x"], c["y"]))
 
             # Load enemies
-            for e in data["Enemies"]:
-                cls = enemy_classes[e["type"]]
-                enemy = cls(e["x"], e["y"])
-                self.enemies.append(enemy)
+            if "Enemies" in data and data["Enemies"]:
+                for e in data["Enemies"]:
+                    cls = enemy_classes[e["type"]]
+                    enemy = cls(e["x"], e["y"])
+                    self.enemies.append(enemy)
         # After loading platforms, compute camera bounds
         self._compute_camera_bounds()
 
@@ -260,19 +261,23 @@ class GAME:
         entities = {}
         for player in self.players:
             if player.is_alive:
+                # Check invincibility status
+                is_invincible = getattr(player, 'is_invincible', False)
                 # In PVP mode, use individual camera, otherwise use shared camera
                 if self.pvp_mode:
                     player_camera_x = self.get_player_camera(player.name)
                     entities[player.name] = {
                         "x": float(player.x - player_camera_x),
                         "y": float(player.y),
-                        "dir": player.direction
+                        "dir": player.direction,
+                        "invincible": is_invincible
                     }
                 else:
                     entities[player.name] = {
                         "x": float(player.x - self.camera_x),
                         "y": float(player.y),
-                        "dir": player.direction
+                        "dir": player.direction,
+                        "invincible": is_invincible
                     }
 
         # Handle enemies - format.txt shows multiple, so we'll use a list approach
@@ -391,7 +396,11 @@ class GamePVP(GAME):
     pass
 
 class GamePVE(GAME):
-    def __init__(self, filename="world1", pvp_mode=False):
+    """
+    PVE Game Mode: Mario (human player) vs Luigi (RL AI controlled)
+    Luigi is an AI opponent that fights against the human player.
+    """
+    def __init__(self, filename="world_PVE/PVE1", pvp_mode=False):
         super().__init__(filename, pvp_mode=False)
         # PvE: Mario (human) vs Luigi (AI)
         self.players = []
@@ -400,60 +409,222 @@ class GamePVE(GAME):
         self.loose = False
         self.camera_x = 0
         self.fireballs = []
-        # Add Mario (human)
-        mario = Player("Mario", self.respawn_point)
+        
+        # Game constants for observation normalization
+        self.max_x = 800
+        self.max_y = 600
+        self.max_vel = 20
+        self.max_lives = 5
+        
+        # Separate spawn points for each player
+        self.mario_spawn = (100, 450)
+        self.luigi_spawn = (650, 450)
+        
+        # Add Mario (human) - spawns on left side
+        mario = Player("Mario", self.mario_spawn)
         mario.faction = "P"
         mario.weapon = FireFlower(owner=mario)
+        mario.lives = 5
         self.players.append(mario)
-        # Add Luigi (AI)
-        luigi = Player("Luigi", self.respawn_point)
+        
+        # Add Luigi (AI) - spawns on right side
+        luigi = Player("Luigi", self.luigi_spawn)
         luigi.faction = "E"  # Enemy faction for PvE
         luigi.weapon = FireFlower(owner=luigi)
+        luigi.lives = 5
         self.players.append(luigi)
+        
         # RL agent setup
         self._init_rl_agent()
+        
+        # Fallback AI state
+        self.fallback_ai_timer = 0
+        self.fallback_ai_action = 0
+        
+        print(f"[GamePVE] Initialized - Mario (human) vs Luigi (AI)")
 
     def _init_rl_agent(self):
+        """Try to load the trained RL agent for Luigi"""
+        import os
+        self.rl_model = None
+        self.np = None
+        
         # Try to load RL agent if available
         try:
             from stable_baselines3 import PPO
             import numpy as np
-            self.rl_model = PPO.load("mario_pvp_ai.zip")
             self.np = np
+            
+            # Try multiple possible model paths
+            model_paths = [
+                os.path.join(os.path.dirname(__file__), "..", "luigi_pve_ai.zip"),
+                os.path.join(os.path.dirname(__file__), "..", "best_model.zip"),
+                os.path.join(os.path.dirname(__file__), "rl_training", "luigi_pve_ai.zip"),
+                "luigi_pve_ai.zip",
+                "best_model.zip",
+            ]
+            
+            for model_path in model_paths:
+                abs_path = os.path.abspath(model_path)
+                if os.path.exists(abs_path):
+                    print(f"[GamePVE] Loading RL model from: {abs_path}")
+                    self.rl_model = PPO.load(abs_path)
+                    print(f"[GamePVE] RL Luigi AI loaded successfully!")
+                    return
+            
+            print("[GamePVE] No trained RL model found. Using fallback AI.")
+            print("[GamePVE] Train the AI with: python game/rl_training/train_luigi_pve.py --train")
+            
+        except ImportError as e:
+            print(f"[GamePVE] stable_baselines3 not installed: {e}")
+            print("[GamePVE] Install with: pip install stable-baselines3[extra]")
         except Exception as e:
-            print("[GamePVE] RL agent not loaded:", e)
-            self.rl_model = None
-            self.np = None
+            print(f"[GamePVE] Error loading RL agent: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _get_rl_observation(self, mario, luigi):
+        """
+        Get normalized observation vector matching the training environment.
+        Observation space: 16 dimensions
+        """
+        if mario is None or luigi is None:
+            return self.np.zeros(16, dtype=self.np.float32)
+        
+        # Normalize positions to [-1, 1]
+        luigi_x = (luigi.x / self.max_x) * 2 - 1
+        luigi_y = (luigi.y / self.max_y) * 2 - 1
+        luigi_vel_x = self.np.clip(luigi.vel_x / self.max_vel, -1, 1)
+        luigi_vel_y = self.np.clip(luigi.vel_y / self.max_vel, -1, 1)
+        luigi_lives = luigi.lives / self.max_lives
+        luigi_on_ground = 1.0 if luigi.on_ground else 0.0
+        
+        mario_x = (mario.x / self.max_x) * 2 - 1
+        mario_y = (mario.y / self.max_y) * 2 - 1
+        mario_vel_x = self.np.clip(mario.vel_x / self.max_vel, -1, 1)
+        mario_vel_y = self.np.clip(mario.vel_y / self.max_vel, -1, 1)
+        mario_lives = mario.lives / self.max_lives
+        mario_on_ground = 1.0 if mario.on_ground else 0.0
+        
+        # Relative position and velocity
+        distance_x = (mario.x - luigi.x) / self.max_x
+        distance_y = (mario.y - luigi.y) / self.max_y
+        relative_vel_x = self.np.clip((mario.vel_x - luigi.vel_x) / self.max_vel, -1, 1)
+        relative_vel_y = self.np.clip((mario.vel_y - luigi.vel_y) / self.max_vel, -1, 1)
+        
+        return self.np.array([
+            luigi_x, luigi_y, luigi_vel_x, luigi_vel_y, luigi_lives, luigi_on_ground,
+            mario_x, mario_y, mario_vel_x, mario_vel_y, mario_lives, mario_on_ground,
+            distance_x, distance_y, relative_vel_x, relative_vel_y
+        ], dtype=self.np.float32)
+
+    def _action_to_input(self, action):
+        """
+        Convert discrete action to game input dict.
+        Must match the training environment action space.
+        Actions: 0=idle, 1=left, 2=right, 3=jump, 4=attack,
+                 5=left+jump, 6=right+jump, 7=left+attack, 8=right+attack
+        """
+        if self.np is not None and isinstance(action, (list, self.np.ndarray)):
+            action = int(action[0]) if hasattr(action, '__len__') else int(action)
+        else:
+            action = int(action)
+        
+        actions_map = {
+            0: {"move": 0, "jump": False, "attack": False},   # idle
+            1: {"move": -1, "jump": False, "attack": False},  # left
+            2: {"move": 1, "jump": False, "attack": False},   # right
+            3: {"move": 0, "jump": True, "attack": False},    # jump
+            4: {"move": 0, "jump": False, "attack": True},    # attack
+            5: {"move": -1, "jump": True, "attack": False},   # left + jump
+            6: {"move": 1, "jump": True, "attack": False},    # right + jump
+            7: {"move": -1, "jump": False, "attack": True},   # left + attack
+            8: {"move": 1, "jump": False, "attack": True},    # right + attack
+        }
+        return actions_map.get(action, actions_map[0])
+
+    def _get_fallback_ai_input(self, mario, luigi):
+        """
+        Simple fallback AI when RL model is not available.
+        Implements basic chase and attack behavior.
+        """
+        import random
+        
+        if mario is None or luigi is None:
+            return {"move": 0, "jump": False, "attack": False}
+        
+        dx = mario.x - luigi.x
+        dy = mario.y - luigi.y
+        distance = (dx**2 + dy**2) ** 0.5
+        
+        # Change action periodically for variety
+        self.fallback_ai_timer += 1
+        if self.fallback_ai_timer % 30 == 0:
+            self.fallback_ai_action = random.randint(0, 8)
+        
+        # Chase Mario
+        move = 0
+        if abs(dx) > 30:
+            move = 1 if dx > 0 else -1
+        
+        # Jump when Mario is above or randomly
+        jump = False
+        if luigi.on_ground:
+            if dy < -40:  # Mario is above
+                jump = True
+            elif random.random() < 0.05:  # Random jump
+                jump = True
+        
+        # Attack when close
+        attack = False
+        if distance < 120 and random.random() < 0.15:
+            attack = True
+        
+        # Occasionally use combo moves
+        if random.random() < 0.1:
+            action_id = random.choice([5, 6, 7, 8])  # Combo actions
+            return self._action_to_input(action_id)
+        
+        return {"move": move, "jump": jump, "attack": attack}
 
     def update(self, player_inputs):
         """Update game state. player_inputs is a dict mapping player names to input dicts"""
-        if self.won:
+        if self.won or self.loose:
             return
 
-        # Human Mario input
+        # Get player references
         mario = next((p for p in self.players if p.name == "Mario"), None)
         luigi = next((p for p in self.players if p.name == "Luigi"), None)
-        if mario and mario.name in player_inputs:
-            inp = player_inputs[mario.name]
-            mario.update(self.platforms, inp)
-            if inp.get("attack", False) and hasattr(mario, 'weapon'):
-                fireball = mario.weapon.attack()
-                if fireball:
-                    self.fireballs.append(fireball)
+        
+        # Human Mario input
+        if mario and mario.is_alive:
+            if mario.name in player_inputs:
+                inp = player_inputs[mario.name]
+                mario.update(self.platforms, inp)
+                if inp.get("attack", False) and hasattr(mario, 'weapon'):
+                    fireball = mario.weapon.attack()
+                    if fireball:
+                        self.fireballs.append(fireball)
+            else:
+                # No input received - just apply physics
+                mario.update(self.platforms, {"move": 0, "jump": False, "attack": False})
 
         # RL Luigi input (AI)
-        if luigi and self.rl_model is not None and self.np is not None and luigi.is_alive:
-            obs = self._get_rl_observation(mario, luigi)
-            action, _ = self.rl_model.predict(obs, deterministic=True)
-            ai_inp = self._action_to_input(action)
+        if luigi and luigi.is_alive:
+            if self.rl_model is not None and self.np is not None:
+                # Use trained RL model
+                obs = self._get_rl_observation(mario, luigi)
+                action, _ = self.rl_model.predict(obs, deterministic=True)
+                ai_inp = self._action_to_input(action)
+            else:
+                # Use fallback AI
+                ai_inp = self._get_fallback_ai_input(mario, luigi)
+            
             luigi.update(self.platforms, ai_inp)
             if ai_inp.get("attack", False) and hasattr(luigi, 'weapon'):
                 fireball = luigi.weapon.attack()
                 if fireball:
                     self.fireballs.append(fireball)
-        elif luigi and luigi.is_alive:
-            # Fallback: stand still
-            luigi.update(self.platforms, {"move": 0, "jump": False, "attack": False})
 
         # Update fireballs
         all_entities = list(self.players) + list(self.enemies)
@@ -463,7 +634,7 @@ class GamePVE(GAME):
             if not fb.is_alive:
                 self.fireballs.remove(fb)
 
-        # Update enemies
+        # Update enemies (if any)
         for e in self.enemies:
             e.update(self.platforms)
 
@@ -474,32 +645,69 @@ class GamePVE(GAME):
         # Handle collisions
         self.handle_collisions_and_rules()
 
-        # Update camera
+        # Update camera (follow Mario)
         self.update_camera()
+
+        # Check win/lose conditions for PVE
+        if mario and not mario.is_alive:
+            self.loose = True
+            print("[GamePVE] Game Over - Mario lost!")
+        elif luigi and not luigi.is_alive:
+            self.won = True
+            print("[GamePVE] Victory - Luigi defeated!")
 
         # Score to lives conversion
         if self.score / 1000 >= 1:
             for p in self.players:
-                p.lives += self.score // 1000
+                if p.is_alive:
+                    p.lives += self.score // 1000
             self.score = self.score % 1000
+    
+    def _get_spawn_point(self, player):
+        """Get the appropriate spawn point for a player"""
+        if player.name == "Mario":
+            return self.mario_spawn
+        elif player.name == "Luigi":
+            return self.luigi_spawn
+        return self.respawn_point
+    
+    def handle_collisions_and_rules(self):
+        """Override to handle PVE-specific collision rules"""
+        if self.won or self.loose:
+            return
 
-    def _get_rl_observation(self, mario, luigi):
-        # Example: simple observation (positions, velocities)
-        obs = [mario.x, mario.y, mario.vel_x, mario.vel_y, luigi.x, luigi.y, luigi.vel_x, luigi.vel_y]
-        return self.np.array(obs, dtype=self.np.float32)
+        for player in self.players:
+            if not player.is_alive:
+                continue
+            mrect = player.rect
+            spawn_point = self._get_spawn_point(player)
 
-    def _action_to_input(self, action):
-        # Example: map discrete action to input dict
-        # 0: left, 1: right, 2: jump, 3: attack, 4: idle
-        if isinstance(action, (list, self.np.ndarray)):
-            action = int(action[0])
-        if action == 0:
-            return {"move": -1, "jump": False, "attack": False}
-        elif action == 1:
-            return {"move": 1, "jump": False, "attack": False}
-        elif action == 2:
-            return {"move": 0, "jump": True, "attack": False}
-        elif action == 3:
-            return {"move": 0, "jump": False, "attack": True}
-        else:
-            return {"move": 0, "jump": False, "attack": False}
+            # Coins
+            for c in self.coins:
+                if not c.collected and mrect.colliderect(c.rect):
+                    c.collected = True
+                    self.score += 100
+
+            # Enemies
+            for e in self.enemies:
+                if not e.is_alive:
+                    continue
+                if mrect.colliderect(e.rect):
+                    if player.vel_y > 0 and (mrect.bottom - e.rect.top) < 20:
+                        if e.take_damage(his_status=player.status):
+                            self.score += e.points
+                        player.vel_y = -8
+                        player.y -= 5
+                    else:
+                        if e.can_deal_damage:
+                            player.take_damage(his_status=e.status, respawn_point=spawn_point)
+
+            # Player-to-player collisions (Mario vs Luigi)
+            for p in self.players:
+                if p == player or not p.is_alive:
+                    continue
+                player.handle_player_collision(p, spawn_point)
+
+            # Fell off world
+            if player.y > 800:
+                player.take_damage(from_faction='W', respawn_point=spawn_point)

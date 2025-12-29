@@ -1,83 +1,91 @@
 import cv2
 import mediapipe as mp
+import math
 
-# Use the standard mediapipe import style
-mp_hands = mp.solutions.hands
+mp_face_mesh = mp.solutions.face_mesh
 mp_drawing = mp.solutions.drawing_utils
+mp_styles = mp.solutions.drawing_styles
 
 
 class AttackDetector:
-    def __init__(self):
-        # Initialize MediaPipe Hands
-        self.hands = mp_hands.Hands(
-            min_detection_confidence=0.7,
-            min_tracking_confidence=0.7
+    def __init__(
+        self,
+        mar_open_threshold=0.65,
+        mar_close_threshold=0.45
+    ):
+        self.face_mesh = mp_face_mesh.FaceMesh(
+            max_num_faces=1,
+            refine_landmarks=True,
+            min_detection_confidence=0.6,
+            min_tracking_confidence=0.6
         )
 
-    def is_pointing(self, hand_landmarks):
-        """
-        Detect if the hand is making a pointing gesture
-        (index finger extended, other fingers curled).
-        """
-        if hand_landmarks is None:
-            return False
+        # Hysteresis thresholds（很重要）
+        self.mar_open_threshold = mar_open_threshold
+        self.mar_close_threshold = mar_close_threshold
 
-        # Index finger
-        index_tip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
-        index_dip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_DIP]
-        index_pip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_PIP]
+        self.was_mouth_open = False
 
-        # Other fingers
-        middle_tip = hand_landmarks.landmark[mp_hands.HandLandmark.MIDDLE_FINGER_TIP]
-        middle_pip = hand_landmarks.landmark[mp_hands.HandLandmark.MIDDLE_FINGER_PIP]
+        # Mouth landmarks
+        self.upper_lip = 13
+        self.lower_lip = 14
+        self.left_mouth = 61
+        self.right_mouth = 291
 
-        ring_tip = hand_landmarks.landmark[mp_hands.HandLandmark.RING_FINGER_TIP]
-        ring_pip = hand_landmarks.landmark[mp_hands.HandLandmark.RING_FINGER_PIP]
+    def _dist(self, a, b):
+        return math.hypot(a.x - b.x, a.y - b.y)
 
-        pinky_tip = hand_landmarks.landmark[mp_hands.HandLandmark.PINKY_TIP]
-        pinky_pip = hand_landmarks.landmark[mp_hands.HandLandmark.PINKY_PIP]
-
-        thumb_tip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
-        thumb_ip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_IP]
-
-        # Index finger extended (tip above DIP and PIP)
-        index_extended = (
-            index_tip.y < index_dip.y and
-            index_dip.y < index_pip.y
-        )
-
-        # Other fingers curled
-        middle_curled = middle_tip.y > middle_pip.y
-        ring_curled = ring_tip.y > ring_pip.y
-        pinky_curled = pinky_tip.y > pinky_pip.y
-        thumb_curled = thumb_tip.y > thumb_ip.y
-
-        return (
-            index_extended and
-            middle_curled and
-            ring_curled and
-            pinky_curled
-        )
+    def calculate_mar(self, face_landmarks):
+        lm = face_landmarks.landmark
+        vertical = self._dist(lm[self.upper_lip], lm[self.lower_lip])
+        horizontal = self._dist(lm[self.left_mouth], lm[self.right_mouth])
+        return vertical / horizontal if horizontal > 0 else 0
 
     def detect_attack(self, frame):
-        """
-        Process a frame and return True if a pointing gesture is detected.
-        """
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = self.hands.process(rgb_frame)
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = self.face_mesh.process(rgb)
 
-        if results.multi_hand_landmarks:
-            for hand_landmarks in results.multi_hand_landmarks:
-                if self.is_pointing(hand_landmarks):
-                    # Draw landmarks for visualization
-                    mp_drawing.draw_landmarks(
-                        frame,
-                        hand_landmarks,
-                        mp_hands.HAND_CONNECTIONS
-                    )
-                    return True
+        attack_triggered = False
+        mar = 0
 
-        return False
+        if results.multi_face_landmarks:
+            face = results.multi_face_landmarks[0]
+            mar = self.calculate_mar(face)
+
+            # 嘴巴是否「現在」是開的
+            if mar > self.mar_open_threshold:
+                is_mouth_open = True
+            elif mar < self.mar_close_threshold:
+                is_mouth_open = False
+            else:
+                is_mouth_open = self.was_mouth_open  # 落在遲滯區，維持狀態
+
+            # 🔥 關鍵：只在 CLOSED → OPEN 觸發
+            if is_mouth_open and not self.was_mouth_open:
+                attack_triggered = True
+
+            self.was_mouth_open = is_mouth_open
+
+            # Visualization
+            mp_drawing.draw_landmarks(
+                frame,
+                face,
+                mp_face_mesh.FACEMESH_LIPS,
+                None,
+                mp_styles.get_default_face_mesh_contours_style()
+            )
+
+        cv2.putText(
+            frame,
+            f"MAR: {mar:.2f} | {'OPEN' if self.was_mouth_open else 'CLOSED'}",
+            (10, 120),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (0, 0, 255) if self.was_mouth_open else (0, 255, 0),
+            2
+        )
+
+        return attack_triggered
 
     def release(self):
-        self.hands.close()
+        self.face_mesh.close()

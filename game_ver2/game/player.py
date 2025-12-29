@@ -1,4 +1,5 @@
 from .entity import Entity, GRAVITY, FRICTION
+import time
 
 class Player(Entity):
     def __init__(self, name, rebornpoint, width=24, height=32):
@@ -7,9 +8,32 @@ class Player(Entity):
         self.lives: int = 3
         self.speed: float = 3.5
         self.jump_strength: float = 15.0
+        # Invincibility after respawn
+        self.invincible = False
+        self.invincible_start_time = 0
+        self.invincible_duration = 2.0  # 2 seconds of invincibility after respawn
+    
+    @property
+    def is_invincible(self):
+        """Check if player is currently invincible"""
+        if self.invincible:
+            if time.time() - self.invincible_start_time >= self.invincible_duration:
+                self.invincible = False
+                return False
+            return True
+        return False
+    
+    def start_invincibility(self):
+        """Start invincibility period"""
+        self.invincible = True
+        self.invincible_start_time = time.time()
     
     def take_damage(self, his_status=None, respawn_point=None, from_faction=None):
         """Handle damage - can be called with his_status (SimpleNamespace) or from_faction (str)"""
+        # Can't take damage while invincible
+        if self.is_invincible:
+            return False
+        
         if from_faction:
             # Legacy format - create a status object
             from types import SimpleNamespace
@@ -17,6 +41,10 @@ class Player(Entity):
         if his_status and super().take_damage(his_status):
             if respawn_point:
                 self.x, self.y = respawn_point  # respawn position
+                self.vel_x = 0
+                self.vel_y = 0
+            # Start invincibility after taking damage
+            self.start_invincibility()
             return True
         return False
 

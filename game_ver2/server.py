@@ -398,7 +398,23 @@ class Server:
                                 # Our Game._load_level uses addpath.world_path which expects name relative to worlds dir
                                 # So pass folder/filename (without .json)
                                 composed_name = f"{folder}/{filename}" if folder else filename
-                                self.game.reload_level(composed_name)
+                                
+                                # Instantiate the correct game class based on category
+                                if sel_cat == "PVE":
+                                    print(f"[Server] Creating GamePVE instance for PVE mode")
+                                    self.game = GamePVE(composed_name, pvp_mode=False)
+                                elif sel_cat == "PVP":
+                                    self.pvp_mode = True
+                                    self.game = GamePVP(composed_name, pvp_mode=True)
+                                    # Re-add all connected players to the new game
+                                    for pname in list(self.player_names.values()):
+                                        self.game.add_player(pname, pvp_mode=True)
+                                else:
+                                    self.game = GameAdventure(composed_name, pvp_mode=False)
+                                    # Re-add all connected players to the new game
+                                    for pname in list(self.player_names.values()):
+                                        self.game.add_player(pname, pvp_mode=False)
+                                
                                 # Only mark as confirmed if loading succeeded
                                 self.world_selection_confirmed = True
                                 self.__broadcast_world_selection_update()

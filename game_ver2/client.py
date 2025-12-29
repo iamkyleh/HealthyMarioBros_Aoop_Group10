@@ -331,36 +331,29 @@ class GameClient:
                 # Handle world selection input
                 if event.key == pygame.K_UP or event.key == pygame.K_w:
                     # Move up (previous)
-                    self._send_world_selection_move(-1, level=self.world_selection_level)
+                    lvl_str = "category" if self.world_selection_level == 0 else "world"
+                    self._send_world_selection_move(-1, level=lvl_str)
                 elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
                     # Move down (next)
-                    self._send_world_selection_move(1, level=self.world_selection_level)
-                elif event.key == pygame.K_BACKSPACE:
+                    lvl_str = "category" if self.world_selection_level == 0 else "world"
+                    self._send_world_selection_move(1, level=lvl_str)
+                elif event.key == pygame.K_LEFT or event.key == pygame.K_a or event.key == pygame.K_BACKSPACE:
                     # Go back to category selection from world list
                     if self.world_selection_level == 1:
                         self.world_selection_level = 0
-                elif event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
+                elif event.key == pygame.K_RIGHT or event.key == pygame.K_d or event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
                     # If currently choosing category, enter world list; otherwise confirm
                     if self.world_selection_level == 0:
                         self.world_selection_level = 1
                     else:
                         self._confirm_world_selection()
-    
-    def _send_world_selection_move(self, direction):
-        """Send world selection movement to server"""
-        # kept for backward compatibility
-        self._send_world_selection_move(direction, level="category")
 
-    def _send_world_selection_move(self, direction, level=0):
-        """Send world selection movement to server. level: 0/category or 1/world or string"""
+    def _send_world_selection_move(self, direction, level="category"):
+        """Send world selection movement to server. level: 'category' or 'world'"""
         if self.s is None or not self.running:
             return
-        if isinstance(level, int):
-            lvl_str = "category" if level == 0 else "world"
-        else:
-            lvl_str = level if isinstance(level, str) else "category"
         try:
-            send_json(self.s, {"world_selection": {"move": direction, "level": lvl_str}})
+            send_json(self.s, {"world_selection": {"move": direction, "level": level}})
         except Exception as e:
             print(f"Error sending world selection input: {e}")
 
@@ -629,11 +622,20 @@ class GameClient:
         # Draw instructions
         if self.role == "P":
             if self.world_selection_level == 0:
-                instruction_text = self.font.render("Use UP/DOWN to choose category, ENTER to open", True, WHITE)
+                instruction_text = self.font.render("UP/DOWN: Select | RIGHT/ENTER: Open Category", True, WHITE)
             else:
-                instruction_text = self.font.render("Use UP/DOWN to choose world, ENTER to confirm, BACKSPACE to go back", True, WHITE)
+                instruction_text = self.font.render("UP/DOWN: Select | ENTER: Confirm | LEFT/BACKSPACE: Back", True, WHITE)
             inst_rect = instruction_text.get_rect(center=(center_x, SCREEN_HEIGHT - 50))
             self.screen.blit(instruction_text, inst_rect)
+            
+            # Show current selection hint
+            if self.world_selection_level == 0:
+                hint_text = self.font.render("[ SELECT GAME MODE ]", True, (255, 255, 100))
+            else:
+                sel_cat = cats[self.selected_category_index] if cats else "?"
+                hint_text = self.font.render(f"[ {sel_cat.upper()} - SELECT WORLD ]", True, (255, 255, 100))
+            hint_rect = hint_text.get_rect(center=(center_x, 80))
+            self.screen.blit(hint_text, hint_rect)
         else:
             instruction_text = self.font.render("Waiting for players to select world...", True, WHITE)
             inst_rect = instruction_text.get_rect(center=(center_x, SCREEN_HEIGHT - 50))
@@ -738,11 +740,24 @@ class GameClient:
         ent = self.latest_state["entity"]
         for name, parameters in ent.items():
             # Handle goombas with indexed names
-            name = name.split("_")[0]
-            img = self.image.get(name)
+            base_name = name.split("_")[0]
+            img = self.image.get(base_name)
             if img:
                 if parameters["dir"] == -1:
                     img = pygame.transform.flip(img, True, False)
+                
+                # Check if entity is invincible (blinking effect)
+                is_invincible = parameters.get("invincible", False)
+                if is_invincible:
+                    # Blink effect - show/hide based on time (flicker every 100ms)
+                    if (pygame.time.get_ticks() // 100) % 2 == 0:
+                        # Make semi-transparent during invincibility
+                        img = img.copy()
+                        img.set_alpha(128)
+                    else:
+                        # Skip drawing every other frame for blink effect
+                        continue
+                
                 self.screen.blit(img, (parameters["x"], parameters["y"]))
     
     def _draw_props(self):
@@ -761,14 +776,31 @@ class GameClient:
             self.screen.blit(scaled_img, (x, y))
     
     def _draw_status(self):
-        y = 16
-        for p_name, p_status in self.latest_state["player_lives"].items():
-            test = self.font.render(f"{p_name} X {p_status}", True, BLACK)
-            self.screen.blit(test, (16, y))
-            y += self.font.get_linesize()
+        player_lives = self.latest_state["player_lives"]
+        
+        # Mario lives - top left
+        if "Mario" in player_lives:
+            mario_text = self.font.render(f"Mario X {player_lives['Mario']}", True, RED)
+            self.screen.blit(mario_text, (16, 16))
+        
+        # Luigi lives - top right
+        if "Luigi" in player_lives:
+            luigi_text = self.font.render(f"Luigi X {player_lives['Luigi']}", True, (0, 128, 0))  # Green for Luigi
+            luigi_rect = luigi_text.get_rect()
+            self.screen.blit(luigi_text, (SCREEN_WIDTH - luigi_rect.width - 16, 16))
+        
+        # Other players (if any) - below Mario
+        y = 16 + self.font.get_linesize()
+        for p_name, p_lives in player_lives.items():
+            if p_name not in ["Mario", "Luigi"]:
+                text = self.font.render(f"{p_name} X {p_lives}", True, BLACK)
+                self.screen.blit(text, (16, y))
+                y += self.font.get_linesize()
 
+        # Score - center top
         score_text = self.font.render(f"Score: {self.latest_state['score']}", True, BLACK)
-        self.screen.blit(score_text, (650, 16))
+        score_rect = score_text.get_rect(center=(SCREEN_WIDTH // 2, 16 + self.font.get_linesize() // 2))
+        self.screen.blit(score_text, score_rect)
 
 
 if __name__ == "__main__":
