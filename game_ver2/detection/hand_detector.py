@@ -12,11 +12,9 @@ class HandDetector:
         self.lower_threshold = lower_threshold
         self.ema_alpha = ema_alpha
 
-        # EMA-smoothed angles
         self.right_angle_ema = None
         self.left_angle_ema = None
 
-        # Arm state
         self.right_up = False
         self.left_up = False
 
@@ -46,25 +44,21 @@ class HandDetector:
 
         lm = pose_landmarks.landmark
 
-        # Right landmarks
         r_shoulder = lm[mp_pose.PoseLandmark.RIGHT_SHOULDER.value]
         r_elbow = lm[mp_pose.PoseLandmark.RIGHT_ELBOW.value]
         r_hip = lm[mp_pose.PoseLandmark.RIGHT_HIP.value]
 
-        # Left landmarks
+    
         l_shoulder = lm[mp_pose.PoseLandmark.LEFT_SHOULDER.value]
         l_elbow = lm[mp_pose.PoseLandmark.LEFT_ELBOW.value]
         l_hip = lm[mp_pose.PoseLandmark.LEFT_HIP.value]
 
-        # Raw angles
         right_angle = self.calculate_angle(r_hip, r_shoulder, r_elbow)
         left_angle = self.calculate_angle(l_hip, l_shoulder, l_elbow)
 
-        # EMA smoothing
         self.right_angle_ema = self.ema(self.right_angle_ema, right_angle)
         self.left_angle_ema = self.ema(self.left_angle_ema, left_angle)
 
-        # Update states
         if self.right_angle_ema > self.raise_threshold:
             self.right_up = True
         elif self.right_angle_ema < self.lower_threshold:
@@ -75,7 +69,6 @@ class HandDetector:
         elif self.left_angle_ema < self.lower_threshold:
             self.left_up = False
 
-        # Return current move
         if self.right_up:
             return "right"
         elif self.left_up:

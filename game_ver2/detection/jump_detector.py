@@ -1,4 +1,3 @@
-# jump_detector.py
 import numpy as np
 from collections import deque
 
@@ -35,12 +34,12 @@ class JumpDetector:
         if velocity > self.up_threshold and not self.jumping:
             self.jumping = True
             jump_triggered = True
-            print("🟢 Jump UP detected!")
+            print("Jump UP detected!")
 
         if velocity < -self.down_threshold and self.jumping:
             self.jumping = False
             self.jump_count += 1
             self.cooldown = 5
-            print(f"✅ Jump LAND → Total: {self.jump_count}")
+            print(f"Jump LAND → Total: {self.jump_count}")
 
         return jump_triggered

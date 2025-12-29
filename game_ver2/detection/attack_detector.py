@@ -20,13 +20,11 @@ class AttackDetector:
             min_tracking_confidence=0.6
         )
 
-        # Hysteresis thresholds（很重要）
         self.mar_open_threshold = mar_open_threshold
         self.mar_close_threshold = mar_close_threshold
 
         self.was_mouth_open = False
 
-        # Mouth landmarks
         self.upper_lip = 13
         self.lower_lip = 14
         self.left_mouth = 61
@@ -52,15 +50,14 @@ class AttackDetector:
             face = results.multi_face_landmarks[0]
             mar = self.calculate_mar(face)
 
-            # 嘴巴是否「現在」是開的
+
             if mar > self.mar_open_threshold:
                 is_mouth_open = True
             elif mar < self.mar_close_threshold:
                 is_mouth_open = False
             else:
-                is_mouth_open = self.was_mouth_open  # 落在遲滯區，維持狀態
+                is_mouth_open = self.was_mouth_open  
 
-            # 🔥 關鍵：只在 CLOSED → OPEN 觸發
             if is_mouth_open and not self.was_mouth_open:
                 attack_triggered = True
 
