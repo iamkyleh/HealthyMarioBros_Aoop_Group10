@@ -1,13 +1,15 @@
 import cv2
+import mediapipe as mp
 
-from mediapipe.python.solutions.hands import Hands, HandLandmark, HAND_CONNECTIONS
-from mediapipe.python.solutions.drawing_utils import draw_landmarks
+# Use the standard mediapipe import style
+mp_hands = mp.solutions.hands
+mp_drawing = mp.solutions.drawing_utils
 
 
 class AttackDetector:
     def __init__(self):
         # Initialize MediaPipe Hands
-        self.hands = Hands(
+        self.hands = mp_hands.Hands(
             min_detection_confidence=0.7,
             min_tracking_confidence=0.7
         )
@@ -21,22 +23,22 @@ class AttackDetector:
             return False
 
         # Index finger
-        index_tip = hand_landmarks.landmark[HandLandmark.INDEX_FINGER_TIP]
-        index_dip = hand_landmarks.landmark[HandLandmark.INDEX_FINGER_DIP]
-        index_pip = hand_landmarks.landmark[HandLandmark.INDEX_FINGER_PIP]
+        index_tip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
+        index_dip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_DIP]
+        index_pip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_PIP]
 
         # Other fingers
-        middle_tip = hand_landmarks.landmark[HandLandmark.MIDDLE_FINGER_TIP]
-        middle_pip = hand_landmarks.landmark[HandLandmark.MIDDLE_FINGER_PIP]
+        middle_tip = hand_landmarks.landmark[mp_hands.HandLandmark.MIDDLE_FINGER_TIP]
+        middle_pip = hand_landmarks.landmark[mp_hands.HandLandmark.MIDDLE_FINGER_PIP]
 
-        ring_tip = hand_landmarks.landmark[HandLandmark.RING_FINGER_TIP]
-        ring_pip = hand_landmarks.landmark[HandLandmark.RING_FINGER_PIP]
+        ring_tip = hand_landmarks.landmark[mp_hands.HandLandmark.RING_FINGER_TIP]
+        ring_pip = hand_landmarks.landmark[mp_hands.HandLandmark.RING_FINGER_PIP]
 
-        pinky_tip = hand_landmarks.landmark[HandLandmark.PINKY_TIP]
-        pinky_pip = hand_landmarks.landmark[HandLandmark.PINKY_PIP]
+        pinky_tip = hand_landmarks.landmark[mp_hands.HandLandmark.PINKY_TIP]
+        pinky_pip = hand_landmarks.landmark[mp_hands.HandLandmark.PINKY_PIP]
 
-        thumb_tip = hand_landmarks.landmark[HandLandmark.THUMB_TIP]
-        thumb_ip = hand_landmarks.landmark[HandLandmark.THUMB_IP]
+        thumb_tip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
+        thumb_ip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_IP]
 
         # Index finger extended (tip above DIP and PIP)
         index_extended = (
@@ -68,10 +70,10 @@ class AttackDetector:
             for hand_landmarks in results.multi_hand_landmarks:
                 if self.is_pointing(hand_landmarks):
                     # Draw landmarks for visualization
-                    draw_landmarks(
+                    mp_drawing.draw_landmarks(
                         frame,
                         hand_landmarks,
-                        HAND_CONNECTIONS
+                        mp_hands.HAND_CONNECTIONS
                     )
                     return True
 
